@@ -11,10 +11,14 @@ import {absoluteFrom} from '../../../src/ngtsc/file_system';
 import {Declaration, Import} from '../../../src/ngtsc/reflection';
 import {Logger} from '../logging/logger';
 import {BundleProgram} from '../packages/bundle_program';
+import {isDefined} from '../utils';
+
 import {Esm5ReflectionHost} from './esm5_host';
+import {NgccClassSymbol} from './ngcc_host';
 
 export class CommonJsReflectionHost extends Esm5ReflectionHost {
   protected commonJsExports = new Map<ts.SourceFile, Map<string, Declaration>|null>();
+  protected topLevelHelperCalls = new Map<string, Map<ts.SourceFile, ts.CallExpression[]>>();
   constructor(
       logger: Logger, isCore: boolean, protected program: ts.Program,
       protected compilerHost: ts.CompilerHost, dts?: BundleProgram|null) {
@@ -22,6 +26,11 @@ export class CommonJsReflectionHost extends Esm5ReflectionHost {
   }
 
   getImportOfIdentifier(id: ts.Identifier): Import|null {
+    const superImport = super.getImportOfIdentifier(id);
+    if (superImport !== null) {
+      return superImport;
+    }
+
     const requireCall = this.findCommonJsImport(id);
     if (requireCall === null) {
       return null;
@@ -38,11 +47,50 @@ export class CommonJsReflectionHost extends Esm5ReflectionHost {
   }
 
   getCommonJsExports(sourceFile: ts.SourceFile): Map<string, Declaration>|null {
-    if (!this.commonJsExports.has(sourceFile)) {
-      const moduleExports = this.computeExportsOfCommonJsModule(sourceFile);
-      this.commonJsExports.set(sourceFile, moduleExports);
+    return getOrDefault(
+        this.commonJsExports, sourceFile, () => this.computeExportsOfCommonJsModule(sourceFile));
+  }
+
+  /**
+   * Search statements related to the given class for calls to the specified helper.
+   *
+   * In CommonJS these helper calls can be outside the class's IIFE at the top level of the
+   * source file. Searching the top level statements for helpers can be expensive, so we
+   * try to get helpers from the IIFE first and only fall back on searching the top level if
+   * no helpers are found.
+   *
+   * @param classSymbol the class whose helper calls we are interested in.
+   * @param helperName the name of the helper (e.g. `__decorate`) whose calls we are interested in.
+   * @returns an array of nodes of calls to the helper with the given name.
+   */
+  protected getHelperCallsForClass(classSymbol: NgccClassSymbol, helperName: string):
+      ts.CallExpression[] {
+    const esm5HelperCalls = super.getHelperCallsForClass(classSymbol, helperName);
+    if (esm5HelperCalls.length > 0) {
+      return esm5HelperCalls;
+    } else {
+      const sourceFile = classSymbol.declaration.valueDeclaration.getSourceFile();
+      return this.getTopLevelHelperCalls(sourceFile, helperName);
     }
-    return this.commonJsExports.get(sourceFile) !;
+  }
+
+  /**
+   * Find all the helper calls at the top level of a source file.
+   *
+   * We cache the helper calls per source file so that we don't have to keep parsing the code for
+   * each class in a file.
+   *
+   * @param sourceFile the source who may contain helper calls.
+   * @param helperName the name of the helper (e.g. `__decorate`) whose calls we are interested in.
+   * @returns an array of nodes of calls to the helper with the given name.
+   */
+  private getTopLevelHelperCalls(sourceFile: ts.SourceFile, helperName: string):
+      ts.CallExpression[] {
+    const helperCallsMap = getOrDefault(this.topLevelHelperCalls, helperName, () => new Map());
+    return getOrDefault(
+        helperCallsMap, sourceFile,
+        () => sourceFile.statements.map(statement => this.getHelperCall(statement, helperName))
+                  .filter(isDefined));
   }
 
   private computeExportsOfCommonJsModule(sourceFile: ts.SourceFile): Map<string, Declaration> {
@@ -50,9 +98,7 @@ export class CommonJsReflectionHost extends Esm5ReflectionHost {
     for (const statement of this.getModuleStatements(sourceFile)) {
       if (isCommonJsExportStatement(statement)) {
         const exportDeclaration = this.extractCommonJsExportDeclaration(statement);
-        if (exportDeclaration !== null) {
-          moduleMap.set(exportDeclaration.name, exportDeclaration.declaration);
-        }
+        moduleMap.set(exportDeclaration.name, exportDeclaration.declaration);
       } else if (isReexportStatement(statement)) {
         const reexports = this.extractCommonJsReexports(statement, sourceFile);
         for (const reexport of reexports) {
@@ -64,14 +110,22 @@ export class CommonJsReflectionHost extends Esm5ReflectionHost {
   }
 
   private extractCommonJsExportDeclaration(statement: CommonJsExportStatement):
-      CommonJsExportDeclaration|null {
+      CommonJsExportDeclaration {
     const exportExpression = statement.expression.right;
     const declaration = this.getDeclarationOfExpression(exportExpression);
-    if (declaration === null) {
-      return null;
-    }
     const name = statement.expression.left.name.text;
-    return {name, declaration};
+    if (declaration !== null) {
+      return {name, declaration};
+    } else {
+      return {
+        name,
+        declaration: {
+          node: null,
+          expression: exportExpression,
+          viaModule: null,
+        },
+      };
+    }
   }
 
   private extractCommonJsReexports(statement: ReexportStatement, containingFile: ts.SourceFile):
@@ -84,8 +138,14 @@ export class CommonJsReflectionHost extends Esm5ReflectionHost {
       const viaModule = stripExtension(importedFile.fileName);
       const importedExports = this.getExportsOfModule(importedFile);
       if (importedExports !== null) {
-        importedExports.forEach(
-            (decl, name) => reexports.push({name, declaration: {node: decl.node, viaModule}}));
+        importedExports.forEach((decl, name) => {
+          if (decl.node !== null) {
+            reexports.push({name, declaration: {node: decl.node, viaModule}});
+          } else {
+            reexports.push(
+                {name, declaration: {node: null, expression: decl.expression, viaModule}});
+          }
+        });
       }
     }
     return reexports;
@@ -120,8 +180,11 @@ export class CommonJsReflectionHost extends Esm5ReflectionHost {
   private resolveModuleName(moduleName: string, containingFile: ts.SourceFile): ts.SourceFile
       |undefined {
     if (this.compilerHost.resolveModuleNames) {
-      const moduleInfo =
-          this.compilerHost.resolveModuleNames([moduleName], containingFile.fileName)[0];
+      // FIXME: remove the "as any" cast once on TS3.6.
+      const moduleInfo = (this.compilerHost as any)
+                             .resolveModuleNames(
+                                 [moduleName], containingFile.fileName, undefined, undefined,
+                                 this.program.getCompilerOptions())[0];
       return moduleInfo && this.program.getSourceFile(absoluteFrom(moduleInfo.resolvedFileName));
     } else {
       const moduleInfo = ts.resolveModuleName(
@@ -183,4 +246,11 @@ function isReexportStatement(statement: ts.Statement): statement is ReexportStat
 
 function stripExtension(fileName: string): string {
   return fileName.replace(/\..+$/, '');
+}
+
+function getOrDefault<K, V>(map: Map<K, V>, key: K, factory: (key: K) => V): V {
+  if (!map.has(key)) {
+    map.set(key, factory(key));
+  }
+  return map.get(key) !;
 }

@@ -13,8 +13,10 @@ import {ClassDeclaration} from '../../reflection';
 import {ImportManager} from '../../translator';
 
 import {TypeCheckBlockMetadata, TypeCheckingConfig} from './api';
+import {DomSchemaChecker} from './dom';
 import {Environment} from './environment';
 import {generateTypeCheckBlock} from './type_check_block';
+
 
 /**
  * An `Environment` representing the single type-checking file into which most (if not all) Type
@@ -35,9 +37,10 @@ export class TypeCheckFile extends Environment {
   }
 
   addTypeCheckBlock(
-      ref: Reference<ClassDeclaration<ts.ClassDeclaration>>, meta: TypeCheckBlockMetadata): void {
+      ref: Reference<ClassDeclaration<ts.ClassDeclaration>>, meta: TypeCheckBlockMetadata,
+      domSchemaChecker: DomSchemaChecker): void {
     const fnId = ts.createIdentifier(`_tcb${this.nextTcbId++}`);
-    const fn = generateTypeCheckBlock(this, ref, fnId, meta);
+    const fn = generateTypeCheckBlock(this, ref, fnId, meta, domSchemaChecker);
     this.tcbStatements.push(fn);
   }
 
@@ -58,6 +61,11 @@ export class TypeCheckFile extends Environment {
     for (const stmt of this.tcbStatements) {
       source += printer.printNode(ts.EmitHint.Unspecified, stmt, this.contextFile) + '\n';
     }
+
+    // Ensure the template type-checking file is an ES module. Otherwise, it's interpreted as some
+    // kind of global namespace in TS, which forces a full re-typecheck of the user's program that
+    // is somehow more expensive than the initial parse.
+    source += '\nexport const IS_A_MODULE = true;\n';
 
     return ts.createSourceFile(
         this.fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);

@@ -69,6 +69,8 @@ export interface PatchEventTargetOptions {
   supportPassive?: boolean;
   // get string from eventName (in nodejs, eventName maybe Symbol)
   eventNameToString?: (eventName: any) => string;
+  // transfer eventName
+  transferEventName?: (eventName: string) => string;
 }
 
 export function patchEventTarget(
@@ -112,7 +114,7 @@ export function patchEventTarget(
   };
 
   // global shared zoneAwareCallback to handle all event callback with capture = false
-  const globalZoneAwareCallback = function(event: Event) {
+  const globalZoneAwareCallback = function(this: unknown, event: Event) {
     // https://github.com/angular/zone.js/issues/911, in IE, sometimes
     // event will be undefined, so we need to use window.event
     event = event || _global.event;
@@ -144,7 +146,7 @@ export function patchEventTarget(
   };
 
   // global shared zoneAwareCallback to handle all event callback with capture = true
-  const globalZoneAwareCaptureCallback = function(event: Event) {
+  const globalZoneAwareCaptureCallback = function(this: unknown, event: Event) {
     // https://github.com/angular/zone.js/issues/911, in IE, sometimes
     // event will be undefined, so we need to use window.event
     event = event || _global.event;
@@ -330,9 +332,12 @@ export function patchEventTarget(
     const makeAddListener = function(
         nativeListener: any, addSource: string, customScheduleFn: any, customCancelFn: any,
         returnTarget = false, prepend = false) {
-      return function() {
+      return function(this: unknown) {
         const target = this || _global;
-        const eventName = arguments[0];
+        let eventName = arguments[0];
+        if (patchOptions && patchOptions.transferEventName) {
+          eventName = patchOptions.transferEventName(eventName);
+        }
         let delegate = arguments[1];
         if (!delegate) {
           return nativeListener.apply(this, arguments);
@@ -498,7 +503,10 @@ export function patchEventTarget(
 
     proto[REMOVE_EVENT_LISTENER] = function() {
       const target = this || _global;
-      const eventName = arguments[0];
+      let eventName = arguments[0];
+      if (patchOptions && patchOptions.transferEventName) {
+        eventName = patchOptions.transferEventName(eventName);
+      }
       const options = arguments[2];
 
       let capture;
@@ -540,6 +548,13 @@ export function patchEventTarget(
               // remove globalZoneAwareCallback and remove the task cache from target
               (existingTask as any).allRemoved = true;
               target[symbolEventName] = null;
+              // in the target, we have an event listener which is added by on_property
+              // such as target.onclick = function() {}, so we need to clear this internal
+              // property too if all delegates all removed
+              if (typeof eventName === 'string') {
+                const onPropertySymbol = ZONE_SYMBOL_PREFIX + 'ON_PROPERTY' + eventName;
+                target[onPropertySymbol] = null;
+              }
             }
             existingTask.zone.cancelTask(existingTask);
             if (returnTarget) {
@@ -558,7 +573,10 @@ export function patchEventTarget(
 
     proto[LISTENERS_EVENT_LISTENER] = function() {
       const target = this || _global;
-      const eventName = arguments[0];
+      let eventName = arguments[0];
+      if (patchOptions && patchOptions.transferEventName) {
+        eventName = patchOptions.transferEventName(eventName);
+      }
 
       const listeners: any[] = [];
       const tasks =
@@ -575,7 +593,7 @@ export function patchEventTarget(
     proto[REMOVE_ALL_LISTENERS_EVENT_LISTENER] = function() {
       const target = this || _global;
 
-      const eventName = arguments[0];
+      let eventName = arguments[0];
       if (!eventName) {
         const keys = Object.keys(target);
         for (let i = 0; i < keys.length; i++) {
@@ -593,6 +611,9 @@ export function patchEventTarget(
         // remove removeListener listener finally
         this[REMOVE_ALL_LISTENERS_EVENT_LISTENER].call(this, 'removeListener');
       } else {
+        if (patchOptions && patchOptions.transferEventName) {
+          eventName = patchOptions.transferEventName(eventName);
+        }
         const symbolEventNames = zoneSymbolEventNames[eventName];
         if (symbolEventNames) {
           const symbolEventName = symbolEventNames[FALSE_STR];

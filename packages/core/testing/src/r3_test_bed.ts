@@ -11,6 +11,7 @@
 // this statement only.
 // clang-format off
 import {
+  AbstractType,
   Component,
   Directive,
   InjectFlags,
@@ -34,6 +35,7 @@ import {MetadataOverride} from './metadata_override';
 import {TestBed} from './test_bed';
 import {ComponentFixtureAutoDetect, ComponentFixtureNoNgZone, TestBedStatic, TestComponentRenderer, TestModuleMetadata} from './test_bed_common';
 import {R3TestBedCompiler} from './r3_test_bed_compiler';
+import {clearRegisteredModuleState} from '../../src/linker/ng_module_factory_registration';
 
 let _nextRootElementId = 0;
 
@@ -49,7 +51,7 @@ const UNDEFINED: Symbol = Symbol('UNDEFINED');
  * Note: Use `TestBed` in tests. It will be set to either `TestBedViewEngine` or `TestBedRender3`
  * according to the compiler used.
  */
-export class TestBedRender3 implements Injector, TestBed {
+export class TestBedRender3 implements TestBed {
   /**
    * Initialize the environment for testing with a compiler factory, a PlatformRef, and an
    * angular module. These are common to every test in the suite.
@@ -150,15 +152,26 @@ export class TestBedRender3 implements Injector, TestBed {
     return TestBedRender3 as any as TestBedStatic;
   }
 
+  static inject<T>(
+      token: Type<T>|InjectionToken<T>|AbstractType<T>, notFoundValue?: T, flags?: InjectFlags): T;
+  static inject<T>(
+      token: Type<T>|InjectionToken<T>|AbstractType<T>, notFoundValue: null, flags?: InjectFlags): T
+      |null;
+  static inject<T>(
+      token: Type<T>|InjectionToken<T>|AbstractType<T>, notFoundValue?: T|null,
+      flags?: InjectFlags): T|null {
+    return _getTestBedRender3().inject(token, notFoundValue, flags);
+  }
+
+  /** @deprecated from v9.0.0 use TestBed.inject */
   static get<T>(token: Type<T>|InjectionToken<T>, notFoundValue?: T, flags?: InjectFlags): any;
-  /**
-   * @deprecated from v8.0.0 use Type<T> or InjectionToken<T>
-   */
+  /** @deprecated from v9.0.0 use TestBed.inject */
   static get(token: any, notFoundValue?: any): any;
+  /** @deprecated from v9.0.0 use TestBed.inject */
   static get(
       token: any, notFoundValue: any = Injector.THROW_IF_NOT_FOUND,
       flags: InjectFlags = InjectFlags.Default): any {
-    return _getTestBedRender3().get(token, notFoundValue);
+    return _getTestBedRender3().inject(token, notFoundValue, flags);
   }
 
   static createComponent<T>(component: Type<T>): ComponentFixture<T> {
@@ -244,22 +257,34 @@ export class TestBedRender3 implements Injector, TestBed {
 
   compileComponents(): Promise<any> { return this.compiler.compileComponents(); }
 
+  inject<T>(
+      token: Type<T>|InjectionToken<T>|AbstractType<T>, notFoundValue?: T, flags?: InjectFlags): T;
+  inject<T>(
+      token: Type<T>|InjectionToken<T>|AbstractType<T>, notFoundValue: null, flags?: InjectFlags): T
+      |null;
+  inject<T>(
+      token: Type<T>|InjectionToken<T>|AbstractType<T>, notFoundValue?: T|null,
+      flags?: InjectFlags): T|null {
+    if (token as unknown === TestBedRender3) {
+      return this as any;
+    }
+    const result = this.testModuleRef.injector.get(token, UNDEFINED as{}, flags);
+    return result === UNDEFINED ? this.compiler.injector.get(token, notFoundValue, flags) as any :
+                                  result;
+  }
+
+  /** @deprecated from v9.0.0 use TestBed.inject */
   get<T>(token: Type<T>|InjectionToken<T>, notFoundValue?: T, flags?: InjectFlags): any;
-  /**
-   * @deprecated from v8.0.0 use Type<T> or InjectionToken<T>
-   */
+  /** @deprecated from v9.0.0 use TestBed.inject */
   get(token: any, notFoundValue?: any): any;
+  /** @deprecated from v9.0.0 use TestBed.inject */
   get(token: any, notFoundValue: any = Injector.THROW_IF_NOT_FOUND,
       flags: InjectFlags = InjectFlags.Default): any {
-    if (token === TestBedRender3) {
-      return this;
-    }
-    const result = this.testModuleRef.injector.get(token, UNDEFINED, flags);
-    return result === UNDEFINED ? this.compiler.injector.get(token, notFoundValue, flags) : result;
+    return this.inject(token, notFoundValue, flags);
   }
 
   execute(tokens: any[], fn: Function, context?: any): any {
-    const params = tokens.map(t => this.get(t));
+    const params = tokens.map(t => this.inject(t));
     return fn.apply(context, params);
   }
 
@@ -299,7 +324,7 @@ export class TestBedRender3 implements Injector, TestBed {
   }
 
   createComponent<T>(type: Type<T>): ComponentFixture<T> {
-    const testComponentRenderer: TestComponentRenderer = this.get(TestComponentRenderer);
+    const testComponentRenderer = this.inject(TestComponentRenderer);
     const rootElId = `root-ng-internal-isolated-${_nextRootElementId++}`;
     testComponentRenderer.insertRootElement(rootElId);
 
@@ -310,11 +335,12 @@ export class TestBedRender3 implements Injector, TestBed {
           `It looks like '${stringify(type)}' has not been IVY compiled - it has no 'ngComponentDef' field`);
     }
 
-    // TODO: Don't cast as `any`, proper type is boolean[]
-    const noNgZone = this.get(ComponentFixtureNoNgZone as any, false);
-    // TODO: Don't cast as `any`, proper type is boolean[]
-    const autoDetect: boolean = this.get(ComponentFixtureAutoDetect as any, false);
-    const ngZone: NgZone|null = noNgZone ? null : this.get(NgZone as Type<NgZone|null>, null);
+    // TODO: Don't cast as `InjectionToken<boolean>`, proper type is boolean[]
+    const noNgZone = this.inject(ComponentFixtureNoNgZone as InjectionToken<boolean>, false);
+    // TODO: Don't cast as `InjectionToken<boolean>`, proper type is boolean[]
+    const autoDetect: boolean =
+        this.inject(ComponentFixtureAutoDetect as InjectionToken<boolean>, false);
+    const ngZone: NgZone|null = noNgZone ? null : this.inject(NgZone, null);
     const componentFactory = new ComponentFactory(componentDef);
     const initComponent = () => {
       const componentRef =

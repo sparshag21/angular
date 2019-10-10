@@ -6,9 +6,9 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
+import {ɵgetDOM as getDOM} from '@angular/common';
 import {getDebugNode} from '@angular/core';
 import {NodeFlags, anchorDef, asElementData, elementDef} from '@angular/core/src/view/index';
-import {getDOM} from '@angular/platform-browser/src/dom/dom_adapter';
 
 import {compViewDef, createAndGetRootNodes} from './helper';
 
@@ -36,7 +36,7 @@ import {compViewDef, createAndGetRootNodes} from './helper';
                             elementDef(0, NodeFlags.None, null, null, 1, 'div'),
                             anchorDef(NodeFlags.None, null, null, 0),
                           ])).rootNodes;
-        expect(getDOM().childNodes(rootNodes[0]).length).toBe(1);
+        expect(rootNodes[0].childNodes.length).toBe(1);
       });
 
       it('should add debug information to the renderer', () => {

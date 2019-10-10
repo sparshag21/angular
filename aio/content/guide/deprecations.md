@@ -40,8 +40,6 @@ v8 - v11
 | `@angular/core` | [`DefaultIterableDiffer`](#core) | <!--v7--> v9 |
 | `@angular/core` | [`ReflectiveKey`](#core) | <!--v8--> v9 |
 | `@angular/core` | [`RenderComponentType`](#core) | <!--v7--> v9 |
-| `@angular/core` | [`Renderer`](#core) | <!--v7--> v9 |
-| `@angular/core` | [`RootRenderer`](#core) | <!--v7--> v9 |
 | `@angular/core` | [`ViewEncapsulation.Native`](#core) | v9 |
 | `@angular/forms` | [`ngForm` element selector](#ngform) | v9 |
 | `@angular/forms` | [`NgFormSelectorWarning`](#forms) | v9 |
@@ -52,7 +50,6 @@ v8 - v11
 | `@angular/upgrade` | [`setAngularLib`](#upgrade-static) | <!--v8--> v9 |
 | template syntax | [`/deep/`, `>>>`, and `::ng-deep`](#deep-component-style-selector) | <!--v7--> unspecified |
 | template syntax | [`<template`>](#template-tag) | <!--v7--> v9 |
-| service worker | [`versionedFiles` setting](#sw-versionedfiles)| v9 |
 | polyfills | [reflect-metadata](#reflect-metadata) | <!--v8--> v9 |
 | `@angular/core` | [`defineInjectable`](#core) | v11 |
 | `@angular/router` | [`loadChildren` string syntax](#loadChildren) | v11 |
@@ -97,9 +94,6 @@ Tip: In the [API reference section](api) of this doc site, deprecated APIs are i
 | [`defineInjectable`](api/core/defineInjectable) | `ɵɵdefineInjectable` | v8 | Used only in generated code. No source code should depend on this API. |
 | [`ReflectiveInjector`](api/core/ReflectiveInjector) | [`Injector.create`](api/core/Injector#create)  | v5 | See [`ReflectiveInjector`](#reflectiveinjector) |
 | [`ReflectiveKey`](api/core/ReflectiveKey) | none | v5 | none |
-| [`RenderComponentType`](api/core/RenderComponentType) | [`RendererType2`](api/core/RendererType2) and  [`Renderer2`](api/core/Renderer2) | v4 | none |
-| [`Renderer`](api/core/Renderer) | [`Renderer2`](api/core/Renderer2) | v4 | none |
-| [`RootRenderer`](api/core/RootRenderer) | [`RendererFactory2`](api/core/RendererFactory2) | v4 | none |
 | [`ViewEncapsulation.Native`](api/core/ViewEncapsulation#Native) | [`ViewEncapsulation.ShadowDom`](api/core/ViewEncapsulation#ShadowDom) | v6 | Use the native encapsulation mechanism of the renderer. See [view.ts](https://github.com/angular/angular/blob/3e992e18ebf51d6036818f26c3d77b52d3ec48eb/packages/core/src/metadata/view.ts#L32).
 | [`WtfScopeFn`](api/core/WtfScopeFn) | none | v8 | See [Web Tracing Framework](#wtf) |
 | [`wtfCreateScope`](api/core/wtfCreateScope) | none | v8 | See [Web Tracing Framework](#wtf) |
@@ -178,7 +172,7 @@ For more information, see [/deep/, >>>, and ::ng-deep](guide/component-styles#de
 {@a template-tag}
 ### &lt;template&gt; tag
 
-The `<template>` tag was deprecated in v4 to avoid colliding with the DOM's element of the same name (such as when using web components). Use `<ng-template>` instead. For more information, see the [Ahead-of-Time Compilation](guide/aot-compiler#enablelegacytemplate) guide.
+The `<template>` tag was deprecated in v4 to avoid colliding with the DOM's element of the same name (such as when using web components). Use `<ng-template>` instead. For more information, see the [Ahead-of-Time Compilation](guide/angular-compiler-options#enablelegacytemplate) guide.
 
 
 
@@ -209,14 +203,6 @@ The [`NgFormSelectorWarning`](api/forms/NgFormSelectorWarning) directive is sole
 Support for using the `ngModel` input property and `ngModelChange` event with reactive form directives was deprecated in version 6.
 
 For more information, see the usage notes for [`FormControlDirective`](api/forms/FormControlDirective#use-with-ngmodel) and [`FormControlName`](api/forms/FormControlName#use-with-ngmodel).
-
-
-{@a sw-versionedfiles}
-### Service worker versionedFiles
-
-In the service worker configuration file `ngsw-config.json`, `versionedFiles` and `files` have the same behavior. As of v6, `versionedFiles` is deprecated; use `files` instead.
-
-For more information, see [Service Worker Configuration](guide/service-worker-config#assetgroups).
 
 
 {@a reflectiveinjector}
@@ -321,7 +307,7 @@ In a typical Angular project, the polyfill is not used in production builds, so 
 {@a static-query-resolution}
 ### `@ViewChild()` / `@ContentChild()` static resolution as the default
 
-See our [dedicated migration guide for static queries](guide/static-query-migration).
+See the [dedicated migration guide for static queries](guide/static-query-migration).
 
 {@a contentchild-input-together}
 ### `@ContentChild()` / `@Input()` used together
@@ -368,7 +354,7 @@ These two properties have subtle differences, so switching to `textContent` unde
 All of the `wtf*` APIs are deprecated and will be removed in a future version.
 
 {@a webworker-apps}
-### Running Angular applications in platform-webworker 
+### Running Angular applications in platform-webworker
 
 The `@angular/platform-*` packages enable Angular to be run in different contexts. For examples,
 `@angular/platform-server` enables Angular to be run on the server, and `@angular/platform-browser`
@@ -382,12 +368,29 @@ worker is not the best strategy for most applications.
 
 Going forward, we will focus our efforts related to web workers around their primary use case of
 offloading CPU-intensive, non-critical work needed for initial rendering (such as in-memory search
-and image processing). Learn more in the 
+and image processing). Learn more in the
 [guide to Using Web Workers with the Angular CLI](guide/web-worker).
 
 As of Angular version 8, all  `platform-webworker` APIs are deprecated.
 This includes both packages: `@angular/platform-webworker` and
 `@angular/platform-webworker-dynamic`.
+
+
+## Angular version 9 schematics
+
+{@a renderer-to-renderer2}
+### Migrating from `Renderer` to `Renderer2`
+
+See the [dedicated migration guide for Renderer](guide/migration-renderer).
+
+{@a undecorated-classes}
+### Migrating undecorated classes
+  See the [dedicated migration guide for undecorated classes](guide/migration-undecorated-classes).
+
+{@a flag-migration}
+### Dynamic queries flag migration
+
+ See the [dedicated migration guide for dynamic queries](guide/migration-dynamic-flag).
 
 {@a removed}
 ## Removed APIs
@@ -396,12 +399,15 @@ The following APIs have been removed starting with version 8.0.0:
 
 | Package | API            | Replacement | Notes |
 | ------- | -------------- | ----------- | ----- |
-| [`@angular/http`](https://v7.angular.io/api/http) | All exports | [`@angular/common/http`](https://v7.angular.io/api/common/http) | See [below](#http). |
-[`@angular/http/testing`](https://v7.angular.io/api/http/testing) | All exports | [`@angular/common/http/testing`](https://v7.angular.io/api/common/http/testing) | See [below](#http). |
-| `@angular/platform-browser` | [`DOCUMENT`](https://v7.angular.io/api/platform-browser/DOCUMENT) | [`DOCUMENT` in `@angular/common`](https://v7.angular.io/api/common/DOCUMENT) | Updating to version 8 with [`ng update`](cli/update) changes this automatically.  |
-| `@angular/core/testing` | [`TestBed.deprecatedOverrideProvider()`](https://v7.angular.io/api/core/testing/TestBed#deprecatedoverrideprovider) | [`TestBed.overrideProvider()`] (api/core/testing/TestBed#overrideprovider) | none |
+| [`@angular/http`](https://v7.angular.io/api/http) | All exports | [`@angular/common/http`](api/common/http) | See [below](#http). |
+[`@angular/http/testing`](https://v7.angular.io/api/http/testing) | All exports | [`@angular/common/http/testing`](api/common/http/testing) | See [below](#http). |
+| `@angular/platform-browser` | [`DOCUMENT`](https://v7.angular.io/api/platform-browser/DOCUMENT) | [`DOCUMENT` in `@angular/common`](api/common/DOCUMENT) | Updating to version 8 with [`ng update`](cli/update) changes this automatically.  |
+| `@angular/core/testing` | [`TestBed.deprecatedOverrideProvider()`](https://v7.angular.io/api/core/testing/TestBed#deprecatedoverrideprovider) | [`TestBed.overrideProvider()`](api/core/testing/TestBed#overrideprovider) | none |
 | `@angular/core/testing` | [`TestBedStatic.deprecatedOverrideProvider()`](https://v7.angular.io/api/core/testing/TestBedStatic#deprecatedoverrideprovider) | [`TestBedStatic.overrideProvider()`](api/core/testing/TestBedStatic#overrideprovider) | none |
-
+| `@angular/service-worker` | `versionedFiles` | `files` | In the service worker configuration file `ngsw-config.json`, replace `versionedFiles` with `files`. See [Service Worker Configuration](guide/service-worker-config#assetgroups). |
+| `@angular/core` | [`Renderer`](https://v8.angular.io/api/core/Renderer) | [`Renderer2`](https://angular.io/api/core/Renderer2) | [Migration guide.](guide/migration-renderer)
+| `@angular/core` | [`RootRenderer`](https://v8.angular.io/api/core/RootRenderer) | [`RendererFactory2`](https://angular.io/api/core/RendererFactory2) | none
+| `@angular/core` | [`RenderComponentType`](https://v8.angular.io/api/core/RenderComponentType) | [`RendererType2`](https://angular.io/api/core/RendererType2) | none
 
 
 <!-- The following anchor is used by redirects from the removed API pages. Do not change or remove. -->
@@ -464,4 +470,3 @@ For more information about using `@angular/common/http`, see the [HttpClient gui
 | --------------------- | ------------------------------------------- |
 | `MockBackend` | [`HttpTestingController`](/api/common/http/testing/HttpTestingController) |
 | `MockConnection` | [`HttpTestingController`](/api/common/http/testing/HttpTestingController) |
-

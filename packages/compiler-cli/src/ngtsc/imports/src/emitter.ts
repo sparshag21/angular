@@ -5,8 +5,7 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-import {Expression, ExternalExpr, WrappedNodeExpr} from '@angular/compiler';
-import {ExternalReference} from '@angular/compiler/src/compiler';
+import {Expression, ExternalExpr, ExternalReference, WrappedNodeExpr} from '@angular/compiler';
 import * as ts from 'typescript';
 import {LogicalFileSystem, LogicalProjectPath, absoluteFrom} from '../../file_system';
 import {ReflectionHost} from '../../reflection';
@@ -177,7 +176,13 @@ export class AbsoluteModuleStrategy implements ReferenceEmitStrategy {
       return null;
     }
     const exportMap = new Map<ts.Declaration, string>();
-    exports.forEach((declaration, name) => { exportMap.set(declaration.node, name); });
+    exports.forEach((declaration, name) => {
+      // It's okay to skip inline declarations, since by definition they're not target-able with a
+      // ts.Declaration anyway.
+      if (declaration.node !== null) {
+        exportMap.set(declaration.node, name);
+      }
+    });
     return exportMap;
   }
 }

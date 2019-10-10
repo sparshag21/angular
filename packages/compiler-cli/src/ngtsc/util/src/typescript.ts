@@ -53,6 +53,11 @@ export function getSourceFileOrNull(program: ts.Program, fileName: AbsoluteFsPat
 }
 
 
+export function getTokenAtPosition(sf: ts.SourceFile, pos: number): ts.Node {
+  // getTokenAtPosition is part of TypeScript's private API.
+  return (ts as any).getTokenAtPosition(sf, pos);
+}
+
 export function identifierOfNode(decl: ts.Node & {name?: ts.Node}): ts.Identifier|null {
   if (decl.name !== undefined && ts.isIdentifier(decl.name)) {
     return decl.name;
@@ -108,7 +113,10 @@ export function resolveModuleName(
     moduleName: string, containingFile: string, compilerOptions: ts.CompilerOptions,
     compilerHost: ts.CompilerHost): ts.ResolvedModule|undefined {
   if (compilerHost.resolveModuleNames) {
-    return compilerHost.resolveModuleNames([moduleName], containingFile)[0];
+    // FIXME: Additional parameters are required in TS3.6, but ignored in 3.5.
+    // Remove the any cast once fully on TS3.6.
+    return (compilerHost as any)
+        .resolveModuleNames([moduleName], containingFile, undefined, undefined, compilerOptions)[0];
   } else {
     return ts.resolveModuleName(moduleName, containingFile, compilerOptions, compilerHost)
         .resolvedModule;

@@ -748,7 +748,7 @@ For more information, see [Schematics](guide/schematics) and [Integrating Librar
 Schematics come with their own command-line tool.
 Using Node 6.9 or above, install the Schematics CLI globally:
 
-<code-example format="." language="bash">
+<code-example language="bash">
 npm install -g @angular-devkit/schematics-cli
 </code-example>
 
@@ -763,7 +763,7 @@ NgModules are delivered within scoped packages whose names begin with the Angula
 
 Import a scoped package in the same way that you import a normal package.
 
-<code-example path="architecture/src/app/app.component.ts" linenums="false" header="architecture/src/app/app.component.ts (import)" region="import">
+<code-example path="architecture/src/app/app.component.ts" header="architecture/src/app/app.component.ts (import)" region="import">
 
 </code-example>
 

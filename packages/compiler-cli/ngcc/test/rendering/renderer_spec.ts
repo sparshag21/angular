@@ -12,7 +12,8 @@ import {absoluteFrom, getFileSystem} from '../../../src/ngtsc/file_system';
 import {TestFile, runInEachFileSystem} from '../../../src/ngtsc/file_system/testing';
 import {loadTestFiles} from '../../../test/helpers';
 import {Import, ImportManager} from '../../../src/ngtsc/translator';
-import {CompiledClass, DecorationAnalyzer} from '../../src/analysis/decoration_analyzer';
+import {DecorationAnalyzer} from '../../src/analysis/decoration_analyzer';
+import {CompiledClass} from '../../src/analysis/types';
 import {NgccReferencesRegistry} from '../../src/analysis/ngcc_references_registry';
 import {ModuleWithProvidersInfo} from '../../src/analysis/module_with_providers_analyzer';
 import {PrivateDeclarationsAnalyzer, ExportInfo} from '../../src/analysis/private_declarations_analyzer';
@@ -62,8 +63,7 @@ function createTestRenderer(
   const fs = getFileSystem();
   const isCore = packageName === '@angular/core';
   const bundle = makeTestEntryPointBundle(
-      'test-package', 'es2015', 'esm2015', isCore, getRootFiles(files),
-      dtsFiles && getRootFiles(dtsFiles));
+      'test-package', 'esm2015', isCore, getRootFiles(files), dtsFiles && getRootFiles(dtsFiles));
   const typeChecker = bundle.src.program.getTypeChecker();
   const host = new Esm2015ReflectionHost(logger, isCore, typeChecker, bundle.dts);
   const referencesRegistry = new NgccReferencesRegistry(host);
@@ -97,6 +97,7 @@ runInEachFileSystem(() => {
     let _: typeof absoluteFrom;
     let INPUT_PROGRAM: TestFile;
     let COMPONENT_PROGRAM: TestFile;
+    let NGMODULE_PROGRAM: TestFile;
     let INPUT_PROGRAM_MAP: SourceMapConverter;
     let RENDERED_CONTENTS: string;
     let OUTPUT_PROGRAM_MAP: SourceMapConverter;
@@ -115,6 +116,12 @@ runInEachFileSystem(() => {
         name: _('/node_modules/test-package/src/component.js'),
         contents:
             `import { Component } from '@angular/core';\nexport class A {}\nA.decorators = [\n    { type: Component, args: [{ selector: 'a', template: '{{ person!.name }}' }] }\n];\n`
+      };
+
+      NGMODULE_PROGRAM = {
+        name: _('/node_modules/test-package/src/ngmodule.js'),
+        contents:
+            `import { NgModule } from '@angular/core';\nexport class A {}\nA.decorators = [\n    { type: NgModule, args: [{}] }\n];\n`
       };
 
       INPUT_PROGRAM_MAP = fromObject({
@@ -181,8 +188,8 @@ runInEachFileSystem(() => {
             decorationAnalyses, switchMarkerAnalyses, privateDeclarationsAnalyses);
         const addDefinitionsSpy = testFormatter.addDefinitions as jasmine.Spy;
         expect(addDefinitionsSpy.calls.first().args[2])
-            .toEqual(
-                `A.ngComponentDef = ɵngcc0.ɵɵdefineComponent({ type: A, selectors: [["a"]], factory: function A_Factory(t) { return new (t || A)(); }, consts: 1, vars: 1, template: function A_Template(rf, ctx) { if (rf & 1) {
+            .toEqual(`A.ngFactoryDef = function A_Factory(t) { return new (t || A)(); };
+A.ngComponentDef = ɵngcc0.ɵɵdefineComponent({ type: A, selectors: [["a"]], decls: 1, vars: 1, template: function A_Template(rf, ctx) { if (rf & 1) {
         ɵngcc0.ɵɵtext(0);
     } if (rf & 2) {
         ɵngcc0.ɵɵtextInterpolate(ctx.person.name);
@@ -220,9 +227,10 @@ runInEachFileSystem(() => {
                name: 'A',
                decorators: [jasmine.objectContaining({name: 'Directive'})]
              }));
+
              expect(addDefinitionsSpy.calls.first().args[2])
-                 .toEqual(
-                     `A.ngDirectiveDef = ɵngcc0.ɵɵdefineDirective({ type: A, selectors: [["", "a", ""]], factory: function A_Factory(t) { return new (t || A)(); } });
+                 .toEqual(`A.ngFactoryDef = function A_Factory(t) { return new (t || A)(); };
+A.ngDirectiveDef = ɵngcc0.ɵɵdefineDirective({ type: A, selectors: [["", "a", ""]] });
 /*@__PURE__*/ ɵngcc0.ɵsetClassMetadata(A, [{
         type: Directive,
         args: [{ selector: '[a]' }]
@@ -253,6 +261,25 @@ runInEachFileSystem(() => {
                  .toEqual(`{ type: Directive, args: [{ selector: '[a]' }] }`);
            });
 
+        it('should render static fields before any additional statements', () => {
+          const {renderer, decorationAnalyses, switchMarkerAnalyses, privateDeclarationsAnalyses,
+                 testFormatter} = createTestRenderer('test-package', [NGMODULE_PROGRAM]);
+          renderer.renderProgram(
+              decorationAnalyses, switchMarkerAnalyses, privateDeclarationsAnalyses);
+          const addDefinitionsSpy = testFormatter.addDefinitions as jasmine.Spy;
+          const definitions: string = addDefinitionsSpy.calls.first().args[2];
+          const ngModuleDef = definitions.indexOf('ngModuleDef');
+          expect(ngModuleDef).not.toEqual(-1, 'ngModuleDef should exist');
+          const ngInjectorDef = definitions.indexOf('ngInjectorDef');
+          expect(ngInjectorDef).not.toEqual(-1, 'ngInjectorDef should exist');
+          const setClassMetadata = definitions.indexOf('setClassMetadata');
+          expect(setClassMetadata).not.toEqual(-1, 'setClassMetadata call should exist');
+          expect(setClassMetadata)
+              .toBeGreaterThan(ngModuleDef, 'setClassMetadata should follow ngModuleDef');
+          expect(setClassMetadata)
+              .toBeGreaterThan(ngInjectorDef, 'setClassMetadata should follow ngInjectorDef');
+        });
+
         it('should render classes without decorators if handler matches', () => {
           const {renderer, decorationAnalyses, switchMarkerAnalyses, privateDeclarationsAnalyses,
                  testFormatter} =
@@ -279,10 +306,10 @@ runInEachFileSystem(() => {
           expect(addDefinitionsSpy.calls.first().args[2])
               .toEqual(
                   `UndecoratedBase.ngBaseDef = ɵngcc0.ɵɵdefineBase({ viewQuery: function (rf, ctx) { if (rf & 1) {
-        ɵngcc0.ɵɵstaticViewQuery(_c0, true, null);
+        ɵngcc0.ɵɵstaticViewQuery(_c0, true);
     } if (rf & 2) {
         var _t;
-        ɵngcc0.ɵɵqueryRefresh(_t = ɵngcc0.ɵɵloadViewQuery()) && (ctx.test = _t.first);
+        ɵngcc0.ɵɵqueryRefresh(_t = ɵngcc0.ɵɵloadQuery()) && (ctx.test = _t.first);
     } } });`);
         });
 

@@ -7,14 +7,14 @@
  */
 
 import {bindingUpdated, bindingUpdated2, bindingUpdated3, bindingUpdated4, getBinding, updateBinding} from './bindings';
-import {getBindingRoot, getLView, isCreationMode} from './state';
-
+import {getBindingRoot, getLView} from './state';
+import {isCreationMode} from './util/view_utils';
 
 
 /**
  * Bindings for pure functions are stored after regular bindings.
  *
- * |------consts------|---------vars---------|                 |----- hostVars (dir1) ------|
+ * |-------decls------|---------vars---------|                 |----- hostVars (dir1) ------|
  * ------------------------------------------------------------------------------------------
  * | nodes/refs/pipes | bindings | fn slots  | injector | dir1 | host bindings | host slots |
  * ------------------------------------------------------------------------------------------
@@ -44,7 +44,7 @@ export function ɵɵpureFunction0<T>(slotOffset: number, pureFn: () => T, thisAr
   // TODO(kara): use bindingRoot instead of bindingStartIndex when implementing host bindings
   const bindingIndex = getBindingRoot() + slotOffset;
   const lView = getLView();
-  return isCreationMode() ?
+  return isCreationMode(lView) ?
       updateBinding(lView, bindingIndex, thisArg ? pureFn.call(thisArg) : pureFn()) :
       getBinding(lView, bindingIndex);
 }

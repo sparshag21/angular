@@ -5,7 +5,7 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-import {Directive, DoCheck, Input, ɵRenderFlags, ɵɵdefineDirective, ɵɵstyleMap, ɵɵstyling, ɵɵstylingApply} from '@angular/core';
+import {Directive, DoCheck, Input, ɵRenderFlags, ɵɵallocHostVars, ɵɵdefineDirective, ɵɵstyleMap} from '@angular/core';
 
 import {NgStyleImpl, NgStyleImplProvider} from './ng_style_impl';
 
@@ -25,6 +25,7 @@ import {NgStyleImpl, NgStyleImplProvider} from './ng_style_impl';
 
 // used when the VE is present
 export const ngStyleDirectiveDef__PRE_R3__ = undefined;
+export const ngStyleFactoryDef__PRE_R3__ = undefined;
 
 // used when the VE is not present (note the directive will
 // never be instantiated normally because it is apart of a
@@ -32,19 +33,20 @@ export const ngStyleDirectiveDef__PRE_R3__ = undefined;
 export const ngStyleDirectiveDef__POST_R3__ = ɵɵdefineDirective({
   type: function() {} as any,
   selectors: null as any,
-  factory: () => {},
   hostBindings: function(rf: ɵRenderFlags, ctx: any, elIndex: number) {
     if (rf & ɵRenderFlags.Create) {
-      ɵɵstyling();
+      ɵɵallocHostVars(1);
     }
     if (rf & ɵRenderFlags.Update) {
       ɵɵstyleMap(ctx.getValue());
-      ɵɵstylingApply();
     }
   }
 });
 
+export const ngStyleFactoryDef__POST_R3__ = function() {};
+
 export const ngStyleDirectiveDef = ngStyleDirectiveDef__PRE_R3__;
+export const ngStyleFactoryDef = ngStyleDirectiveDef__PRE_R3__;
 
 /**
  * Serves as the base non-VE container for NgStyle.
@@ -62,6 +64,7 @@ export const ngStyleDirectiveDef = ngStyleDirectiveDef__PRE_R3__;
  */
 export class NgStyleBase {
   static ngDirectiveDef: any = ngStyleDirectiveDef;
+  static ngFactory: any = ngStyleFactoryDef;
 
   constructor(protected _delegate: NgStyleImpl) {}
 

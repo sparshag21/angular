@@ -7,10 +7,12 @@
  */
 
 import {CommonModule} from '@angular/common';
-import {Attribute, ChangeDetectorRef, Component, Directive, ElementRef, EventEmitter, Host, HostBinding, INJECTOR, Inject, Injectable, InjectionToken, Injector, Input, LOCALE_ID, ModuleWithProviders, NgModule, Optional, Output, Pipe, PipeTransform, Self, SkipSelf, TemplateRef, ViewChild, ViewContainerRef, forwardRef} from '@angular/core';
+import {Attribute, ChangeDetectorRef, Component, ComponentFactoryResolver, ComponentRef, Directive, ElementRef, EventEmitter, Host, HostBinding, INJECTOR, Inject, Injectable, InjectionToken, Injector, Input, LOCALE_ID, ModuleWithProviders, NgModule, NgZone, Optional, Output, Pipe, PipeTransform, Self, SkipSelf, TemplateRef, ViewChild, ViewContainerRef, forwardRef, ɵDEFAULT_LOCALE_ID as DEFAULT_LOCALE_ID} from '@angular/core';
+import {ɵINJECTOR_SCOPE} from '@angular/core/src/core';
 import {ViewRef} from '@angular/core/src/render3/view_ref';
 import {TestBed} from '@angular/core/testing';
 import {ivyEnabled, onlyInIvy} from '@angular/private/testing';
+import {BehaviorSubject} from 'rxjs';
 
 describe('di', () => {
   describe('no dependencies', () => {
@@ -53,7 +55,7 @@ describe('di', () => {
         ]
       });
 
-      expect(TestBed.get(testToken) as string[]).toEqual(['A', 'B', 'C']);
+      expect(TestBed.inject(testToken)).toEqual(['A', 'B', 'C']);
     });
   });
 
@@ -866,6 +868,37 @@ describe('di', () => {
     });
   });
 
+  describe('Tree shakable injectors', () => {
+    it('should support tree shakable injectors scopes', () => {
+      @Injectable({providedIn: 'any'})
+      class AnyService {
+        constructor(public injector: Injector) {}
+      }
+
+      @Injectable({providedIn: 'root'})
+      class RootService {
+        constructor(public injector: Injector) {}
+      }
+
+      @Injectable({providedIn: 'platform'})
+      class PlatformService {
+        constructor(public injector: Injector) {}
+      }
+
+      const testBedInjector: Injector = TestBed.get(Injector);
+      const childInjector = Injector.create([], testBedInjector);
+
+      const anyService = childInjector.get(AnyService);
+      expect(anyService.injector).toBe(childInjector);
+
+      const rootService = childInjector.get(RootService);
+      expect(rootService.injector.get(ɵINJECTOR_SCOPE)).toBe('root');
+
+      const platformService = childInjector.get(PlatformService);
+      expect(platformService.injector.get(ɵINJECTOR_SCOPE)).toBe('platform');
+    });
+  });
+
   describe('service injection', () => {
 
     it('should create instance even when no injector present', () => {
@@ -916,6 +949,37 @@ describe('di', () => {
         expect(warnSpy).toHaveBeenCalledWith(
             `DEPRECATED: DI is instantiating a token "SubSubClass" that inherits its @Injectable decorator but does not provide one itself.\n` +
             `This will become an error in v10. Please add @Injectable() to the "SubSubClass" class.`);
+      }
+    });
+
+    it('should instantiate correct class when undecorated class extends an injectable', () => {
+      @Injectable()
+      class MyService {
+        id = 1;
+      }
+
+      class MyRootService extends MyService {
+        id = 2;
+      }
+
+      @Component({template: ''})
+      class App {
+      }
+
+      TestBed.configureTestingModule({declarations: [App], providers: [MyRootService]});
+      const warnSpy = spyOn(console, 'warn');
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+
+      const provider = TestBed.inject(MyRootService);
+
+      expect(provider instanceof MyRootService).toBe(true);
+      expect(provider.id).toBe(2);
+
+      if (ivyEnabled) {
+        expect(warnSpy).toHaveBeenCalledWith(
+            `DEPRECATED: DI is instantiating a token "MyRootService" that inherits its @Injectable decorator but does not provide one itself.\n` +
+            `This will become an error in v10. Please add @Injectable() to the "MyRootService" class.`);
       }
     });
   });
@@ -1086,6 +1150,69 @@ describe('di', () => {
            // the nativeElement should be a comment
            expect(directive.elementRef.nativeElement.nodeType).toEqual(Node.COMMENT_NODE);
          });
+
+      it('should be available if used in conjunction with other tokens', () => {
+        @Injectable()
+        class ServiceA {
+          subject: any;
+          constructor(protected zone: NgZone) {
+            this.subject = new BehaviorSubject<any>(1);
+            // trigger change detection
+            zone.run(() => { this.subject.next(2); });
+          }
+        }
+
+        @Directive({selector: '[dir]'})
+        class DirectiveA {
+          constructor(public service: ServiceA, public elementRef: ElementRef) {}
+        }
+
+        @Component({
+          selector: 'child',
+          template: `<div id="test-id" dir></div>`,
+        })
+        class ChildComp {
+          @ViewChild(DirectiveA, {static: false}) directive !: DirectiveA;
+        }
+
+        @Component({
+          selector: 'root',
+          template: '...',
+        })
+        class RootComp {
+          public childCompRef !: ComponentRef<ChildComp>;
+
+          constructor(
+              public factoryResolver: ComponentFactoryResolver, public vcr: ViewContainerRef) {}
+
+          create() {
+            const factory = this.factoryResolver.resolveComponentFactory(ChildComp);
+            this.childCompRef = this.vcr.createComponent(factory);
+            this.childCompRef.changeDetectorRef.detectChanges();
+          }
+        }
+
+        // this module is needed, so that View Engine can generate factory for ChildComp
+        @NgModule({
+          declarations: [DirectiveA, RootComp, ChildComp],
+          entryComponents: [RootComp, ChildComp],
+        })
+        class ModuleA {
+        }
+
+        TestBed.configureTestingModule({
+          imports: [ModuleA],
+          providers: [ServiceA],
+        });
+
+        const fixture = TestBed.createComponent(RootComp);
+        fixture.autoDetectChanges();
+
+        fixture.componentInstance.create();
+
+        const {elementRef} = fixture.componentInstance.childCompRef.instance.directive;
+        expect(elementRef.nativeElement.id).toBe('test-id');
+      });
     });
 
     describe('TemplateRef', () => {
@@ -1508,7 +1635,7 @@ describe('di', () => {
     const fixture = TestBed.createComponent(MyComp);
     fixture.detectChanges();
     // takes `LOCALE_ID` from module injector, since we skip Component level with @SkipSelf
-    expect(fixture.componentInstance.localeId).toBe('en-US');
+    expect(fixture.componentInstance.localeId).toBe(DEFAULT_LOCALE_ID);
   });
 
   it('should work when injecting dependency in Directives', () => {
@@ -1634,7 +1761,8 @@ describe('di', () => {
 
       expect(directive.otherAttr).toBe('value');
       expect(directive.className).toBe('hello there');
-      expect(directive.inlineStyles).toBe('margin: 1px; color: red;');
+      expect(directive.inlineStyles).toMatch(/color:\s*red/);
+      expect(directive.inlineStyles).toMatch(/margin:\s*1px/);
     });
 
     it('should not inject attributes with namespace', () => {

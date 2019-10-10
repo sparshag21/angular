@@ -14,7 +14,8 @@ const LOCAL_MARKER_PATH = 'node_modules/_local_.json';
 const PACKAGE_JSON_REGEX = /^[^/]+\/package\.json$/;
 
 const ANGULAR_ROOT_DIR = path.resolve(__dirname, '../../..');
-const ANGULAR_DIST_PACKAGES = path.resolve(ANGULAR_ROOT_DIR, 'dist/packages-dist');
+const ANGULAR_DIST_PACKAGES = path.join(ANGULAR_ROOT_DIR, 'dist/packages-dist');
+const ANGULAR_DIST_PACKAGES_BUILD_CMD = path.join(ANGULAR_ROOT_DIR, 'scripts/build-packages-dist.sh');
 
 /**
  * A tool that can install Angular dependencies for a project from NPM or from the
@@ -29,16 +30,17 @@ class NgPackagesInstaller {
    * Create a new installer for a project in the specified directory.
    *
    * @param {string} projectDir - the path to the directory containing the project.
-   * @param {object} options - a hash of options for the install
-   *                           * `debug` (`boolean`) - whether to display debug messages.
-   *                           * `force` (`boolean`) - whether to force a local installation
-   *                                                   even if there is a local marker file.
-   *                           * `ignorePackages` (`string[]`) - a collection of names of packages
-   *                                                   that should not be copied over.
+   * @param {object} options - a hash of options for the install:
+   *     * `debug` (`boolean`) - whether to display debug messages.
+   *     * `force` (`boolean`) - whether to force a local installation even if there is a local marker file.
+   *     * `buildPackages` (`boolean`) - whether to build the local Angular packages before using them.
+   *           (NOTE: Building the packages is currently not supported on Windows, so a message is printed instead.)
+   *     * `ignorePackages` (`string[]`) - a collection of names of packages that should not be copied over.
    */
   constructor(projectDir, options = {}) {
-    this.debug = options.debug;
-    this.force = options.force;
+    this.debug = this._parseBooleanArg(options.debug);
+    this.force = this._parseBooleanArg(options.force);
+    this.buildPackages = this._parseBooleanArg(options.buildPackages);
     this.ignorePackages = options.ignorePackages || [];
     this.projectDir = path.resolve(projectDir);
     this.localMarkerPath = path.resolve(this.projectDir, LOCAL_MARKER_PATH);
@@ -160,6 +162,31 @@ class NgPackagesInstaller {
     });
   }
 
+  /**
+   * Build the local Angular packages.
+   *
+   * NOTE:
+   * Building the packages is currently not supported on Windows, so a message is printed instead, prompting the user to
+   * do it themselves (e.g. using Windows Subsystem for Linux or a docker container).
+   */
+  _buildDistPackages() {
+    const canBuild = process.platform !== 'win32';
+
+    if (canBuild) {
+      this._log(`Building the Angular packages with: ${ANGULAR_DIST_PACKAGES_BUILD_CMD}`);
+      shelljs.exec(ANGULAR_DIST_PACKAGES_BUILD_CMD);
+    } else {
+      this._warn([
+        'Automatically building the local Angular packages is currently not supported on Windows.',
+        `Please, ensure '${ANGULAR_DIST_PACKAGES}' exists and is up-to-date (e.g. by running ` +
+          `'${ANGULAR_DIST_PACKAGES_BUILD_CMD}' in Git Bash for Windows, Windows Subsystem for Linux or a Linux ` +
+          'docker container or VM).',
+        '',
+        'Proceeding anyway...',
+      ].join('\n'));
+    }
+  }
+
   _collectDependencies(dependencies, packages) {
     const peerDependencies = Object.create(null);
     const mergedDependencies = Object.assign(Object.create(null), dependencies);
@@ -184,32 +211,35 @@ class NgPackagesInstaller {
 
   /**
    * A hash of Angular package configs.
-   * (Detected as directories in '/packages/' that contain a top-level 'package.json' file.)
+   * (Detected as directories in '/dist/packages-dist/' that contain a top-level 'package.json' file.)
    */
   _getDistPackages() {
     const packageConfigs = Object.create(null);
+    const distDir = ANGULAR_DIST_PACKAGES;
 
-    [ANGULAR_DIST_PACKAGES].forEach(distDir => {
-      this._log(`Angular distributable directory: ${distDir}.`);
-      shelljs
-        .find(distDir)
-        .map(filePath => filePath.slice(distDir.length + 1))
-        .filter(filePath => PACKAGE_JSON_REGEX.test(filePath))
-        .forEach(packagePath => {
-          const packageName = `@angular/${packagePath.slice(0, -PACKAGE_JSON.length -1)}`;
-          if (this.ignorePackages.indexOf(packageName) === -1) {
-            const packageConfig = require(path.resolve(distDir, packagePath));
-            packageConfigs[packageName] = {
-              parentDir: distDir,
-              packageJsonPath: path.resolve(distDir, packagePath),
-              config: packageConfig
-            };
-          } else {
-            this._log('Ignoring package', packageName);
-          }
-        });
+    this._log(`Angular distributable directory: ${distDir}.`);
 
-    });
+    if (this.buildPackages) {
+      this._buildDistPackages();
+    }
+
+    shelljs
+      .find(distDir)
+      .map(filePath => filePath.slice(distDir.length + 1))
+      .filter(filePath => PACKAGE_JSON_REGEX.test(filePath))
+      .forEach(packagePath => {
+        const packageName = `@angular/${packagePath.slice(0, -PACKAGE_JSON.length -1)}`;
+        if (this.ignorePackages.indexOf(packageName) === -1) {
+          const packageConfig = require(path.resolve(distDir, packagePath));
+          packageConfigs[packageName] = {
+            parentDir: distDir,
+            packageJsonPath: path.resolve(distDir, packagePath),
+            config: packageConfig
+          };
+        } else {
+          this._log('Ignoring package', packageName);
+        }
+      });
 
     this._log('Found the following Angular distributables:', Object.keys(packageConfigs).map(key => `\n - ${key}`));
     return packageConfigs;
@@ -235,6 +265,21 @@ class NgPackagesInstaller {
   }
 
   /**
+   * Extract the value for a boolean cli argument/option. When passing an option multiple times, `yargs` parses it as an
+   * array of boolean values. In that case, we only care about the last occurrence.
+   *
+   * This can be useful, for example, when one has a base command with the option turned on and another command
+   * (building on top of the first one) turning the option off:
+   * ```
+   * "base-command": "my-script --foo --bar",
+   * "no-bar-command": "yarn base-command --no-bar",
+   * ```
+   */
+  _parseBooleanArg(value) {
+    return Array.isArray(value) ? value.pop() : value;
+  }
+
+  /**
    * Parse and return a `yarn.lock` file.
    */
   _parseLockfile(lockfilePath) {
@@ -254,17 +299,28 @@ class NgPackagesInstaller {
     const restoreCmd = `node ${relativeScriptPath} restore ${absoluteProjectDir}`;
 
     // Log a warning.
+    this._warn([
+      `The project at "${absoluteProjectDir}" is running against the local Angular build.`,
+      '',
+      'To restore the npm packages run:',
+      '',
+      `  "${restoreCmd}"`,
+    ].join('\n'));
+  }
+
+  /**
+   * Log a warning message do draw user's attention.
+   * @param {...string[]} messages - The messages to be logged.
+   */
+  _warn(...messages) {
+    const lines = messages.join(' ').split('\n');
     console.warn(chalk.yellow([
       '',
       '!'.repeat(110),
       '!!!',
       '!!!  WARNING',
       '!!!',
-      `!!!  The project at "${absoluteProjectDir}" is running against the local Angular build.`,
-      '!!!',
-      '!!!  To restore the npm packages run:',
-      '!!!',
-      `!!!    "${restoreCmd}"`,
+      ...lines.map(line => `!!!  ${line}`),
       '!!!',
       '!'.repeat(110),
       '',
@@ -287,24 +343,27 @@ class NgPackagesInstaller {
 function main() {
   shelljs.set('-e');
 
+  const createInstaller = argv => {
+    const {projectDir, ...options} = argv;
+    return new NgPackagesInstaller(projectDir, options);
+  };
+
   yargs
     .usage('$0 <cmd> [args]')
 
     .option('debug', { describe: 'Print additional debug information.', default: false })
     .option('force', { describe: 'Force the command to execute even if not needed.', default: false })
+    .option('build-packages', { describe: 'Build the local Angular packages, before using them.', default: false })
     .option('ignore-packages', { describe: 'List of Angular packages that should not be used in local mode.', default: [], array: true })
 
     .command('overwrite <projectDir> [--force] [--debug] [--ignore-packages package1 package2]', 'Install dependencies from the locally built Angular distributables.', () => {}, argv => {
-      const installer = new NgPackagesInstaller(argv.projectDir, argv);
-      installer.installLocalDependencies();
+      createInstaller(argv).installLocalDependencies();
     })
     .command('restore <projectDir> [--debug]', 'Install dependencies from the npm registry.', () => {}, argv => {
-      const installer = new NgPackagesInstaller(argv.projectDir, argv);
-      installer.restoreNpmDependencies();
+      createInstaller(argv).restoreNpmDependencies();
     })
     .command('check <projectDir> [--debug]', 'Check that dependencies came from npm. Otherwise display a warning message.', () => {}, argv => {
-      const installer = new NgPackagesInstaller(argv.projectDir, argv);
-      installer.checkDependencies();
+      createInstaller(argv).checkDependencies();
     })
     .demandCommand(1, 'Please supply a command from the list above.')
     .strict()

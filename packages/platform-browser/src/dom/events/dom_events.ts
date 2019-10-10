@@ -34,24 +34,22 @@ const NATIVE_REMOVE_LISTENER = 'removeEventListener';
 const stopSymbol = '__zone_symbol__propagationStopped';
 const stopMethodSymbol = '__zone_symbol__stopImmediatePropagation';
 
-
-const blackListedMap = (() => {
-  const blackListedEvents: string[] =
-      (typeof Zone !== 'undefined') && (Zone as any)[__symbol__('BLACK_LISTED_EVENTS')];
-  if (blackListedEvents) {
-    const res: {[eventName: string]: string} = {};
-    blackListedEvents.forEach(eventName => { res[eventName] = eventName; });
-    return res;
+const unpatchedMap: {[key: string]: string}|undefined = (() => {
+  const unpatchedEvents =
+      (typeof Zone !== 'undefined') && (Zone as any)[__symbol__('UNPATCHED_EVENTS')];
+  if (unpatchedEvents) {
+    const unpatchedEventMap: {[eventName: string]: string} = {};
+    unpatchedEvents.forEach((eventName: string) => { unpatchedEventMap[eventName] = eventName; });
+    return unpatchedEventMap;
   }
   return undefined;
 })();
 
-
-const isBlackListedEvent = function(eventName: string) {
-  if (!blackListedMap) {
+const isUnpatchedEvent = function(eventName: string) {
+  if (!unpatchedMap) {
     return false;
   }
-  return blackListedMap.hasOwnProperty(eventName);
+  return unpatchedMap.hasOwnProperty(eventName);
 };
 
 interface TaskData {
@@ -61,7 +59,7 @@ interface TaskData {
 
 // a global listener to handle all dom event,
 // so we do not need to create a closure every time
-const globalListener = function(event: Event) {
+const globalListener = function(this: any, event: Event) {
   const symbolName = symbolNames[event.type];
   if (!symbolName) {
     return;
@@ -123,15 +121,17 @@ export class DomEventsPlugin extends EventManagerPlugin {
     }
     const delegate = (Event.prototype as any)[stopMethodSymbol] =
         Event.prototype.stopImmediatePropagation;
-    Event.prototype.stopImmediatePropagation = function() {
+    Event.prototype.stopImmediatePropagation = function(this: any) {
       if (this) {
         this[stopSymbol] = true;
       }
 
-      // should call native delegate in case
-      // in some environment part of the application
-      // will not use the patched Event
-      delegate && delegate.apply(this, arguments);
+      // We should call native delegate in case in some environment part of
+      // the application will not use the patched Event. Also we cast the
+      // "arguments" to any since "stopImmediatePropagation" technically does not
+      // accept any arguments, but we don't know what developers pass through the
+      // function and we want to not break these calls.
+      delegate && delegate.apply(this, arguments as any);
     };
   }
 
@@ -158,7 +158,7 @@ export class DomEventsPlugin extends EventManagerPlugin {
     let callback: EventListener = handler as EventListener;
     // if zonejs is loaded and current zone is not ngZone
     // we keep Zone.current on target for later restoration.
-    if (zoneJsLoaded && (!NgZone.isInAngularZone() || isBlackListedEvent(eventName))) {
+    if (zoneJsLoaded && (!NgZone.isInAngularZone() || isUnpatchedEvent(eventName))) {
       let symbolName = symbolNames[eventName];
       if (!symbolName) {
         symbolName = symbolNames[eventName] = __symbol__(ANGULAR + eventName + FALSE);
@@ -169,7 +169,7 @@ export class DomEventsPlugin extends EventManagerPlugin {
         taskDatas = (element as any)[symbolName] = [];
       }
 
-      const zone = isBlackListedEvent(eventName) ? Zone.root : Zone.current;
+      const zone = isUnpatchedEvent(eventName) ? Zone.root : Zone.current;
       if (taskDatas.length === 0) {
         taskDatas.push({zone: zone, handler: callback});
       } else {

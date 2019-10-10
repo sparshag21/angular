@@ -9,6 +9,8 @@
 import {SchemaMetadata, ViewEncapsulation} from '../../core';
 import {ProcessProvidersFunction} from '../../di/interface/provider';
 import {Type} from '../../interface/type';
+
+import {TAttributes} from './node';
 import {CssSelectorList} from './projection';
 import {TView} from './view';
 
@@ -76,9 +78,14 @@ export interface ComponentType<T> extends Type<T> { ngComponentDef: never; }
  * A subclass of `Type` which has a static `ngDirectiveDef`:`DirectiveDef` field making it
  * consumable for rendering.
  */
-export interface DirectiveType<T> extends Type<T> { ngDirectiveDef: never; }
+export interface DirectiveType<T> extends Type<T> {
+  ngDirectiveDef: never;
+  ngFactoryDef: () => T;
+}
 
-export const enum DirectiveDefFlags {ContentQuery = 0b10}
+export enum DirectiveDefFlags {
+  ContentQuery = 0b10
+}
 
 /**
  * A subclass of `Type` which has a static `ngPipeDef`:`PipeDef` field making it
@@ -175,9 +182,10 @@ export interface DirectiveDef<T> extends ɵɵBaseDef<T> {
   readonly exportAs: string[]|null;
 
   /**
-   * Factory function used to create a new directive instance.
+   * Factory function used to create a new directive instance. Will be null initially.
+   * Populated when the factory is first requested by directive instantiation logic.
    */
-  factory: FactoryFn<T>;
+  factory: FactoryFn<T>|null;
 
   /* The following are lifecycle hooks for this component */
   onChanges: (() => void)|null;
@@ -208,6 +216,11 @@ export type ɵɵComponentDefWithMeta<
     OutputMap extends{[key: string]: string}, QueryFields extends string[]> = ComponentDef<T>;
 
 /**
+ * @codeGenApi
+ */
+export type ɵɵFactoryDef<T> = () => T;
+
+/**
  * Runtime link information for Components.
  *
  * This is internal data structure used by the render to link
@@ -230,6 +243,9 @@ export interface ComponentDef<T> extends DirectiveDef<T> {
    */
   readonly template: ComponentTemplate<T>;
 
+  /** Constants associated with the component's view. */
+  readonly consts: TAttributes[]|null;
+
   /**
    * An array of `ngContent[selector]` values that were found in the template.
    */
@@ -247,7 +263,7 @@ export interface ComponentDef<T> extends DirectiveDef<T> {
    * can pre-fill the array and set the binding start index.
    */
   // TODO(kara): remove queries from this count
-  readonly consts: number;
+  readonly decls: number;
 
   /**
    * The number of bindings in this component template (including pure fn bindings).
@@ -329,6 +345,9 @@ export interface ComponentDef<T> extends DirectiveDef<T> {
  * See: {@link definePipe}
  */
 export interface PipeDef<T> {
+  /** Token representing the pipe. */
+  type: Type<T>;
+
   /**
    * Pipe name.
    *
@@ -337,9 +356,10 @@ export interface PipeDef<T> {
   readonly name: string;
 
   /**
-   * Factory function used to create a new pipe instance.
+   * Factory function used to create a new pipe instance. Will be null initially.
+   * Populated when the factory is first requested by pipe instantiation logic.
    */
-  factory: FactoryFn<T>;
+  factory: FactoryFn<T>|null;
 
   /**
    * Whether or not the pipe is pure.
@@ -397,7 +417,7 @@ export type DirectiveDefList = (DirectiveDef<any>| ComponentDef<any>)[];
 export type DirectiveTypesOrFactory = (() => DirectiveTypeList) | DirectiveTypeList;
 
 export type DirectiveTypeList =
-    (DirectiveDef<any>| ComponentDef<any>|
+    (DirectiveType<any>| ComponentType<any>|
      Type<any>/* Type as workaround for: Microsoft/TypeScript/issues/4881 */)[];
 
 export type HostBindingsFunction<T> =
@@ -412,10 +432,10 @@ export type PipeDefListOrFactory = (() => PipeDefList) | PipeDefList;
 
 export type PipeDefList = PipeDef<any>[];
 
-export type PipeTypesOrFactory = (() => DirectiveTypeList) | DirectiveTypeList;
+export type PipeTypesOrFactory = (() => PipeTypeList) | PipeTypeList;
 
 export type PipeTypeList =
-    (PipeDef<any>| Type<any>/* Type as workaround for: Microsoft/TypeScript/issues/4881 */)[];
+    (PipeType<any>| Type<any>/* Type as workaround for: Microsoft/TypeScript/issues/4881 */)[];
 
 
 // Note: This hack is necessary so we don't erroneously get a circular dependency

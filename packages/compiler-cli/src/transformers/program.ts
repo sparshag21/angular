@@ -27,7 +27,6 @@ import {getAngularEmitterTransformFactory} from './node_emitter_transform';
 import {PartialModuleMetadataTransformer} from './r3_metadata_transform';
 import {StripDecoratorsMetadataTransformer, getDecoratorStripTransformerFactory} from './r3_strip_decorators';
 import {getAngularClassTransformerFactory} from './r3_transform';
-import {TscPassThroughProgram} from './tsc_pass_through';
 import {DTS, GENERATED_FILES, StructureIsReused, TS, createMessageDiagnostic, isInRootDir, ngToTsDiagnostic, tsStructureIsReused, userError} from './util';
 
 
@@ -79,7 +78,7 @@ const MIN_TS_VERSION = '3.4.0';
  * ∀ supported typescript version v, v < MAX_TS_VERSION
  * MAX_TS_VERSION is not considered as a supported TypeScript version
  */
-const MAX_TS_VERSION = '3.5.0';
+const MAX_TS_VERSION = '3.6.0';
 
 class AngularCompilerProgram implements Program {
   private rootNames: string[];
@@ -143,7 +142,7 @@ class AngularCompilerProgram implements Program {
     }
 
     this.loweringMetadataTransform =
-        new LowerMetadataTransform(options.enableIvy ? R3_LOWER_FIELDS : LOWER_FIELDS);
+        new LowerMetadataTransform(options.enableIvy !== false ? R3_LOWER_FIELDS : LOWER_FIELDS);
     this.metadataCache = this.createMetadataCache([this.loweringMetadataTransform]);
   }
 
@@ -263,7 +262,7 @@ class AngularCompilerProgram implements Program {
     emitCallback?: TsEmitCallback,
     mergeEmitResultsCallback?: TsMergeEmitResultsCallback,
   } = {}): ts.EmitResult {
-    if (this.options.enableIvy) {
+    if (this.options.enableIvy !== false) {
       throw new Error('Cannot run legacy compiler in ngtsc mode');
     }
     return this._emitRender2(parameters);
@@ -898,12 +897,11 @@ export function createProgram({rootNames, options, host, oldProgram}: {
   options: CompilerOptions,
   host: CompilerHost, oldProgram?: Program
 }): Program {
-  if (options.enableIvy === true) {
+  if (options.enableIvy !== false) {
     return new NgtscProgram(rootNames, options, host, oldProgram as NgtscProgram);
-  } else if (options.enableIvy === 'tsc') {
-    return new TscPassThroughProgram(rootNames, options, host, oldProgram);
+  } else {
+    return new AngularCompilerProgram(rootNames, options, host, oldProgram);
   }
-  return new AngularCompilerProgram(rootNames, options, host, oldProgram);
 }
 
 // Compute the AotCompiler options

@@ -6,7 +6,7 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {BoundTarget} from '@angular/compiler';
+import {BoundTarget, ParseSourceFile, SchemaMetadata} from '@angular/compiler';
 import * as ts from 'typescript';
 
 import {AbsoluteFsPath} from '../../file_system';
@@ -14,11 +14,14 @@ import {NoopImportRewriter, Reference, ReferenceEmitter} from '../../imports';
 import {ClassDeclaration} from '../../reflection';
 import {ImportManager} from '../../translator';
 
-import {TypeCheckBlockMetadata, TypeCheckableDirectiveMeta, TypeCheckingConfig, TypeCtorMetadata} from './api';
+import {TemplateSourceMapping, TypeCheckBlockMetadata, TypeCheckableDirectiveMeta, TypeCheckingConfig, TypeCtorMetadata} from './api';
+import {shouldReportDiagnostic, translateDiagnostic} from './diagnostics';
+import {DomSchemaChecker, RegistryDomSchemaChecker} from './dom';
 import {Environment} from './environment';
 import {TypeCheckProgramHost} from './host';
+import {TcbSourceManager} from './source';
 import {generateTypeCheckBlock, requiresInlineTypeCheckBlock} from './type_check_block';
-import {TypeCheckFile, typeCheckFilePath} from './type_check_file';
+import {TypeCheckFile} from './type_check_file';
 import {generateInlineTypeCtor, requiresInlineTypeCtor} from './type_constructor';
 
 
@@ -51,6 +54,10 @@ export class TypeCheckContext {
    */
   private typeCtorPending = new Set<ts.ClassDeclaration>();
 
+  private sourceManager = new TcbSourceManager();
+
+  private domSchemaChecker = new RegistryDomSchemaChecker(this.sourceManager);
+
   /**
    * Record a template for the given component `node`, with a `SelectorMatcher` for directive
    * matching.
@@ -62,7 +69,10 @@ export class TypeCheckContext {
   addTemplate(
       ref: Reference<ClassDeclaration<ts.ClassDeclaration>>,
       boundTarget: BoundTarget<TypeCheckableDirectiveMeta>,
-      pipes: Map<string, Reference<ClassDeclaration<ts.ClassDeclaration>>>): void {
+      pipes: Map<string, Reference<ClassDeclaration<ts.ClassDeclaration>>>,
+      schemas: SchemaMetadata[], sourceMapping: TemplateSourceMapping,
+      file: ParseSourceFile): void {
+    const id = this.sourceManager.captureSource(sourceMapping, file);
     // Get all of the directives used in the template and record type constructors for all of them.
     for (const dir of boundTarget.getUsedDirectives()) {
       const dirRef = dir.ref as Reference<ClassDeclaration<ts.ClassDeclaration>>;
@@ -84,13 +94,14 @@ export class TypeCheckContext {
       }
     }
 
+    const tcbMetadata: TypeCheckBlockMetadata = {id, boundTarget, pipes, schemas};
     if (requiresInlineTypeCheckBlock(ref.node)) {
       // This class didn't meet the requirements for external type checking, so generate an inline
       // TCB for the class.
-      this.addInlineTypeCheckBlock(ref, {boundTarget, pipes});
+      this.addInlineTypeCheckBlock(ref, tcbMetadata);
     } else {
       // The class can be type-checked externally as normal.
-      this.typeCheckFile.addTypeCheckBlock(ref, {boundTarget, pipes});
+      this.typeCheckFile.addTypeCheckBlock(ref, tcbMetadata, this.domSchemaChecker);
     }
   }
 
@@ -149,7 +160,7 @@ export class TypeCheckContext {
     // the source code in between the original chunks.
     ops.forEach((op, idx) => {
       const text = op.execute(importManager, sf, this.refEmitter, printer);
-      code += text + textParts[idx + 1];
+      code += '\n\n' + text + textParts[idx + 1];
     });
 
     // Write out the imports that need to be added to the beginning of the file.
@@ -190,25 +201,26 @@ export class TypeCheckContext {
     });
 
     const diagnostics: ts.Diagnostic[] = [];
+    const collectDiagnostics = (diags: readonly ts.Diagnostic[]): void => {
+      for (const diagnostic of diags) {
+        if (shouldReportDiagnostic(diagnostic)) {
+          const translated = translateDiagnostic(diagnostic, this.sourceManager);
+
+          if (translated !== null) {
+            diagnostics.push(translated);
+          }
+        }
+      }
+    };
+
     for (const sf of interestingFiles) {
-      diagnostics.push(...typeCheckProgram.getSemanticDiagnostics(sf));
+      collectDiagnostics(typeCheckProgram.getSemanticDiagnostics(sf));
     }
 
+    diagnostics.push(...this.domSchemaChecker.diagnostics);
+
     return {
-      diagnostics: diagnostics.filter(
-          (diag: ts.Diagnostic):
-              boolean => {
-                if (diag.code === 6133 /* $var is declared but its value is never read. */) {
-                  return false;
-                } else if (diag.code === 6199 /* All variables are unused. */) {
-                  return false;
-                } else if (
-                    diag.code ===
-                    2695 /* Left side of comma operator is unused and has no side effects. */) {
-                  return false;
-                }
-                return true;
-              }),
+      diagnostics,
       program: typeCheckProgram,
     };
   }
@@ -221,7 +233,7 @@ export class TypeCheckContext {
       this.opMap.set(sf, []);
     }
     const ops = this.opMap.get(sf) !;
-    ops.push(new TcbOp(ref, tcbMeta, this.config));
+    ops.push(new TcbOp(ref, tcbMeta, this.config, this.domSchemaChecker));
   }
 }
 
@@ -252,7 +264,8 @@ interface Op {
 class TcbOp implements Op {
   constructor(
       readonly ref: Reference<ClassDeclaration<ts.ClassDeclaration>>,
-      readonly meta: TypeCheckBlockMetadata, readonly config: TypeCheckingConfig) {}
+      readonly meta: TypeCheckBlockMetadata, readonly config: TypeCheckingConfig,
+      readonly domSchemaChecker: DomSchemaChecker) {}
 
   /**
    * Type check blocks are inserted immediately after the end of the component class.
@@ -263,7 +276,7 @@ class TcbOp implements Op {
       string {
     const env = new Environment(this.config, im, refEmitter, sf);
     const fnName = ts.createIdentifier(`_tcb_${this.ref.node.pos}`);
-    const fn = generateTypeCheckBlock(env, this.ref, fnName, this.meta);
+    const fn = generateTypeCheckBlock(env, this.ref, fnName, this.meta, this.domSchemaChecker);
     return printer.printNode(ts.EmitHint.Unspecified, fn, sf);
   }
 }

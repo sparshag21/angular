@@ -5,9 +5,9 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-import {registerBinding} from '@angular/core/src/render3/styling_next/bindings';
-import {NodeStylingDebug, attachStylingDebugObject} from '@angular/core/src/render3/styling_next/styling_debug';
-import {allocTStylingContext} from '@angular/core/src/render3/styling_next/util';
+import {registerBinding} from '@angular/core/src/render3/styling/bindings';
+import {NodeStylingDebug, attachStylingDebugObject} from '@angular/core/src/render3/styling/styling_debug';
+import {allocTStylingContext} from '@angular/core/src/render3/util/styling_utils';
 
 describe('styling debugging tools', () => {
   describe('NodeStylingDebug', () => {
@@ -18,7 +18,7 @@ describe('styling debugging tools', () => {
          const data: any[] = [];
          const d = new NodeStylingDebug(context, data);
 
-         registerBinding(context, 0, 'width', null);
+         registerBinding(context, 0, 0, 'width', null);
          expect(d.summary).toEqual({
            width: {
              prop: 'width',
@@ -27,7 +27,7 @@ describe('styling debugging tools', () => {
            },
          });
 
-         registerBinding(context, 0, 'width', '100px');
+         registerBinding(context, 0, 0, 'width', '100px');
          expect(d.summary).toEqual({
            width: {
              prop: 'width',
@@ -39,7 +39,7 @@ describe('styling debugging tools', () => {
          const someBindingIndex1 = 1;
          data[someBindingIndex1] = '200px';
 
-         registerBinding(context, 0, 'width', someBindingIndex1);
+         registerBinding(context, 0, 0, 'width', someBindingIndex1);
          expect(d.summary).toEqual({
            width: {
              prop: 'width',
@@ -51,7 +51,7 @@ describe('styling debugging tools', () => {
          const someBindingIndex2 = 2;
          data[someBindingIndex2] = '500px';
 
-         registerBinding(context, 0, 'width', someBindingIndex2);
+         registerBinding(context, 0, 1, 'width', someBindingIndex2);
          expect(d.summary).toEqual({
            width: {
              prop: 'width',

@@ -7,6 +7,7 @@
  */
 
 import {isDevMode} from '../util/is_dev_mode';
+import {SafeValue} from './bypass';
 import {_sanitizeUrl} from './url_sanitizer';
 
 
@@ -25,7 +26,7 @@ import {_sanitizeUrl} from './url_sanitizer';
  * transformation values.
  */
 const VALUES = '[-,."\'%_!# a-zA-Z0-9]+';
-const TRANSFORMATION_FNS = '(?:matrix|translate|scale|rotate|skew|perspective)(?:X|Y|3d)?';
+const TRANSFORMATION_FNS = '(?:matrix|translate|scale|rotate|skew|perspective)(?:X|Y|Z|3d)?';
 const COLOR_FNS = '(?:rgb|hsl)a?';
 const GRADIENTS = '(?:repeating-)?(?:linear|radial)-gradient';
 const CSS3_FNS = '(?:calc|attr)';
@@ -135,5 +136,5 @@ export const enum StyleSanitizeMode {
  * If a value is provided then the sanitized version of that will be returned.
  */
 export interface StyleSanitizeFn {
-  (prop: string, value: string|null, mode?: StyleSanitizeMode): any;
+  (prop: string, value: string|SafeValue|null, mode?: StyleSanitizeMode): any;
 }

@@ -21,9 +21,9 @@ export interface Decorator {
   name: string;
 
   /**
-   * Identifier which refers to the decorator in source.
+   * Identifier which refers to the decorator in the user's code.
    */
-  identifier: ts.Identifier;
+  identifier: DecoratorIdentifier;
 
   /**
    * `Import` by which the decorator was brought into the module in which it was invoked, or `null`
@@ -43,6 +43,17 @@ export interface Decorator {
 }
 
 /**
+ * A decorator is identified by either a simple identifier (e.g. `Decorator`) or, in some cases,
+ * a namespaced property access (e.g. `core.Decorator`).
+ */
+export type DecoratorIdentifier = ts.Identifier | NamespacedIdentifier;
+export type NamespacedIdentifier = ts.PropertyAccessExpression & {expression: ts.Identifier};
+export function isDecoratorIdentifier(exp: ts.Expression): exp is DecoratorIdentifier {
+  return ts.isIdentifier(exp) ||
+      ts.isPropertyAccessExpression(exp) && ts.isIdentifier(exp.expression);
+}
+
+/**
  * The `ts.Declaration` of a "class".
  *
  * Classes are represented differently in different code formats:
@@ -58,12 +69,6 @@ export interface Decorator {
  * because we need to be able to reference it in other parts of the program.
  */
 export type ClassDeclaration<T extends ts.Declaration = ts.Declaration> = T & {name: ts.Identifier};
-
-/**
- * The symbol corresponding to a "class" declaration. I.e. a `ts.Symbol` whose `valueDeclaration` is
- * a `ClassDeclaration`.
- */
-export type ClassSymbol = ts.Symbol & {valueDeclaration: ClassDeclaration};
 
 /**
  * An enumeration of possible kinds of class members.
@@ -331,28 +336,65 @@ export interface Import {
 }
 
 /**
- * The declaration of a symbol, along with information about how it was imported into the
- * application.
+ * Base type for all `Declaration`s.
  */
-export interface Declaration<T extends ts.Declaration = ts.Declaration> {
-  /**
-   * TypeScript reference to the declaration itself.
-   */
-  node: T;
-
+export interface BaseDeclaration<T extends ts.Declaration = ts.Declaration> {
   /**
    * The absolute module path from which the symbol was imported into the application, if the symbol
    * was imported via an absolute module (even through a chain of re-exports). If the symbol is part
    * of the application and was not imported from an absolute path, this will be `null`.
    */
   viaModule: string|null;
+
+  /**
+   * TypeScript reference to the declaration itself, if one exists.
+   */
+  node: T|null;
 }
+
+/**
+ * A declaration that has an associated TypeScript `ts.Declaration`.
+ *
+ * The alternative is an `InlineDeclaration`.
+ */
+export interface ConcreteDeclaration<T extends ts.Declaration = ts.Declaration> extends
+    BaseDeclaration<T> {
+  node: T;
+}
+
+/**
+ * A declaration that does not have an associated TypeScript `ts.Declaration`, only a
+ * `ts.Expression`.
+ *
+ * This can occur in some downlevelings when an `export const VAR = ...;` (a `ts.Declaration`) is
+ * transpiled to an assignment statement (e.g. `exports.VAR = ...;`). There is no `ts.Declaration`
+ * associated with `VAR` in that case, only an expression.
+ */
+export interface InlineDeclaration extends BaseDeclaration {
+  node: null;
+
+  /**
+   * The `ts.Expression` which constitutes the value of the declaration.
+   */
+  expression: ts.Expression;
+}
+
+/**
+ * The declaration of a symbol, along with information about how it was imported into the
+ * application.
+ *
+ * This can either be a `ConcreteDeclaration` if the underlying TypeScript node for the symbol is an
+ * actual `ts.Declaration`, or an `InlineDeclaration` if the declaration was transpiled in certain
+ * downlevelings to a `ts.Expression` instead.
+ */
+export type Declaration<T extends ts.Declaration = ts.Declaration> =
+    ConcreteDeclaration<T>| InlineDeclaration;
 
 /**
  * Abstracts reflection operations on a TypeScript AST.
  *
- * Depending on the format of the code being interpreted, different concepts are represented with
- * different syntactical structures. The `ReflectionHost` abstracts over those differences and
+ * Depending on the format of the code being interpreted, different concepts are represented
+ * with different syntactical structures. The `ReflectionHost` abstracts over those differences and
  * presents a single API by which the compiler can query specific information about the AST.
  *
  * All operations on the `ReflectionHost` require the use of TypeScript `ts.Node`s with binding
@@ -371,7 +413,7 @@ export interface ReflectionHost {
    * result of an IIFE execution.
    *
    * @returns an array of `Decorator` metadata if decorators are present on the declaration, or
-   * `null` if either no decorators were present or if the declaration is not of a decorable type.
+   * `null` if either no decorators were present or if the declaration is not of a decoratable type.
    */
   getDecoratorsOfDeclaration(declaration: ts.Declaration): Decorator[]|null;
 
@@ -493,6 +535,16 @@ export interface ReflectionHost {
    * @param clazz a `ClassDeclaration` representing the class over which to reflect.
    */
   hasBaseClass(clazz: ClassDeclaration): boolean;
+
+  /**
+   * Get an expression representing the base class (if any) of the given `clazz`.
+   *
+   * This expression is most commonly an Identifier, but is possible to inherit from a more dynamic
+   * expression.
+   *
+   * @param clazz the class whose base we want to get.
+   */
+  getBaseClassExpression(clazz: ClassDeclaration): ts.Expression|null;
 
   /**
    * Get the number of generic type parameters of a given class.

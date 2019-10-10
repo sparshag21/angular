@@ -8,7 +8,7 @@
 
 import {dispatchEvent} from '@angular/platform-browser/testing/src/browser_util';
 
-import {markDirty, ɵɵdefineComponent, ɵɵdefineDirective, ɵɵreference, ɵɵresolveBody, ɵɵresolveDocument, ɵɵselect, ɵɵtextBinding} from '../../src/render3/index';
+import {markDirty, ɵɵdefineComponent, ɵɵdefineDirective, ɵɵreference, ɵɵresolveBody, ɵɵresolveDocument, ɵɵselect, ɵɵtextInterpolate} from '../../src/render3/index';
 import {ɵɵcontainer, ɵɵcontainerRefreshEnd, ɵɵcontainerRefreshStart, ɵɵelement, ɵɵelementEnd, ɵɵelementStart, ɵɵembeddedViewEnd, ɵɵembeddedViewStart, ɵɵgetCurrentView, ɵɵlistener, ɵɵtext} from '../../src/render3/instructions/all';
 import {RenderFlags} from '../../src/render3/interfaces/definition';
 import {GlobalTargetResolver} from '../../src/render3/interfaces/renderer';
@@ -27,10 +27,17 @@ describe('event listeners', () => {
 
     onClick() { this.counter++; }
 
+    static ngFactoryDef =
+        () => {
+          let comp = new MyComp();
+          comps.push(comp);
+          return comp;
+        }
+
     static ngComponentDef = ɵɵdefineComponent({
       type: MyComp,
       selectors: [['comp']],
-      consts: 2,
+      decls: 2,
       vars: 0,
       /** <button (click)="onClick()"> Click me </button> */
       template: function CompTemplate(rf: RenderFlags, ctx: any) {
@@ -42,11 +49,6 @@ describe('event listeners', () => {
           }
           ɵɵelementEnd();
         }
-      },
-      factory: () => {
-        let comp = new MyComp();
-        comps.push(comp);
-        return comp;
       }
     });
   }
@@ -58,20 +60,22 @@ describe('event listeners', () => {
     /* @HostListener('body:click') */
     onBodyClick() { events.push('component - body:click'); }
 
+    static ngFactoryDef =
+        () => {
+          let comp = new MyCompWithGlobalListeners();
+          comps.push(comp);
+          return comp;
+        }
+
     static ngComponentDef = ɵɵdefineComponent({
       type: MyCompWithGlobalListeners,
       selectors: [['comp']],
-      consts: 1,
+      decls: 1,
       vars: 0,
       template: function CompTemplate(rf: RenderFlags, ctx: any) {
         if (rf & RenderFlags.Create) {
           ɵɵtext(0, 'Some text');
         }
-      },
-      factory: () => {
-        let comp = new MyCompWithGlobalListeners();
-        comps.push(comp);
-        return comp;
       },
       hostBindings: function HostListenerDir_HostBindings(
           rf: RenderFlags, ctx: any, elIndex: number) {
@@ -94,10 +98,12 @@ describe('event listeners', () => {
     /* @HostListener('body:click') */
     onBodyClick() { events.push('directive - body:click'); }
 
+    static ngFactoryDef = function HostListenerDir_Factory() {
+      return new GlobalHostListenerDir();
+    };
     static ngDirectiveDef = ɵɵdefineDirective({
       type: GlobalHostListenerDir,
       selectors: [['', 'hostListenerDir', '']],
-      factory: function HostListenerDir_Factory() { return new GlobalHostListenerDir(); },
       hostBindings: function HostListenerDir_HostBindings(
           rf: RenderFlags, ctx: any, elIndex: number) {
         if (rf & RenderFlags.Create) {
@@ -128,11 +134,11 @@ describe('event listeners', () => {
       return this.handlerReturnValue;
     }
 
+    static ngFactoryDef = () => new PreventDefaultComp();
     static ngComponentDef = ɵɵdefineComponent({
       type: PreventDefaultComp,
       selectors: [['prevent-default-comp']],
-      factory: () => new PreventDefaultComp(),
-      consts: 2,
+      decls: 2,
       vars: 0,
       /** <button (click)="onClick($event)">Click</button> */
       template: (rf: RenderFlags, ctx: PreventDefaultComp) => {
@@ -319,11 +325,11 @@ describe('event listeners', () => {
 
       onClick() { this.counter++; }
 
+      static ngFactoryDef = () => new AppComp();
       static ngComponentDef = ɵɵdefineComponent({
         type: AppComp,
         selectors: [['app-comp']],
-        factory: () => new AppComp(),
-        consts: 1,
+        decls: 1,
         vars: 0,
         template: function(rf: RenderFlags, ctx: any) {
           if (rf & RenderFlags.Create) {
@@ -380,11 +386,11 @@ describe('event listeners', () => {
 
       onClick(index: number) { this.counters[index]++; }
 
+      static ngFactoryDef = () => new AppComp();
       static ngComponentDef = ɵɵdefineComponent({
         type: AppComp,
         selectors: [['app-comp']],
-        factory: () => new AppComp(),
-        consts: 1,
+        decls: 1,
         vars: 0,
         template: function(rf: RenderFlags, ctx: any) {
           if (rf & RenderFlags.Create) {
@@ -444,11 +450,11 @@ describe('event listeners', () => {
 
       onClick(index: number) { this.counters[index]++; }
 
+      static ngFactoryDef = () => new AppComp();
       static ngComponentDef = ɵɵdefineComponent({
         type: AppComp,
         selectors: [['app-comp']],
-        factory: () => new AppComp(),
-        consts: 1,
+        decls: 1,
         vars: 0,
         template: function(rf: RenderFlags, ctx: any) {
           if (rf & RenderFlags.Create) {
@@ -472,7 +478,7 @@ describe('event listeners', () => {
                 }
                 if (rf1 & RenderFlags.Update) {
                   ɵɵselect(3);
-                  ɵɵtextBinding(ctx.counters[i]);
+                  ɵɵtextInterpolate(ctx.counters[i]);
                 }
                 ɵɵembeddedViewEnd();
               }
@@ -523,17 +529,17 @@ describe('event listeners', () => {
       /* @HostListener('click') */
       onClick() { events.push('click!'); }
 
+      static ngFactoryDef = () => { return new MyComp(); };
       static ngComponentDef = ɵɵdefineComponent({
         type: MyComp,
         selectors: [['comp']],
-        consts: 1,
+        decls: 1,
         vars: 0,
         template: function CompTemplate(rf: RenderFlags, ctx: any) {
           if (rf & RenderFlags.Create) {
             ɵɵtext(0, 'Some text');
           }
         },
-        factory: () => { return new MyComp(); },
         hostBindings: function HostListenerDir_HostBindings(
             rf: RenderFlags, ctx: any, elIndex: number) {
           if (rf & RenderFlags.Create) {
@@ -574,10 +580,10 @@ describe('event listeners', () => {
       /* @HostListener('click') */
       onClick() { events.push('click!'); }
 
+      static ngFactoryDef = function HostListenerDir_Factory() { return new HostListenerDir(); };
       static ngDirectiveDef = ɵɵdefineDirective({
         type: HostListenerDir,
         selectors: [['', 'hostListenerDir', '']],
-        factory: function HostListenerDir_Factory() { return new HostListenerDir(); },
         hostBindings: function HostListenerDir_HostBindings(
             rf: RenderFlags, ctx: any, elIndex: number) {
           if (rf & RenderFlags.Create) {
@@ -588,10 +594,10 @@ describe('event listeners', () => {
     }
 
     const fixture = new TemplateFixture(() => {
-      ɵɵelementStart(0, 'button', ['hostListenerDir', '']);
+      ɵɵelementStart(0, 'button', 0);
       ɵɵtext(1, 'Click');
       ɵɵelementEnd();
-    }, () => {}, 2, 0, [HostListenerDir]);
+    }, () => {}, 2, 0, [HostListenerDir], null, null, undefined, [['hostListenerDir', '']]);
 
     const button = fixture.hostElement.querySelector('button') !;
 
@@ -604,8 +610,8 @@ describe('event listeners', () => {
 
   it('should support global host listeners on directives', () => {
     const fixture = new TemplateFixture(() => {
-      ɵɵelement(0, 'div', ['hostListenerDir', '']);
-    }, () => {}, 1, 0, [GlobalHostListenerDir]);
+      ɵɵelement(0, 'div', 0);
+    }, () => {}, 1, 0, [GlobalHostListenerDir], null, null, undefined, [['hostListenerDir', '']]);
 
     const doc = fixture.hostElement.ownerDocument !;
 
@@ -626,10 +632,11 @@ describe('event listeners', () => {
 
       onClick(a: any, b: any) { this.counter += a + b; }
 
+      static ngFactoryDef = () => new MyComp();
       static ngComponentDef = ɵɵdefineComponent({
         type: MyComp,
         selectors: [['comp']],
-        consts: 2,
+        decls: 2,
         vars: 0,
         /** <button (click)="onClick(data.a, data.b)"> Click me </button> */
         template: function CompTemplate(rf: RenderFlags, ctx: any) {
@@ -641,8 +648,7 @@ describe('event listeners', () => {
             }
             ɵɵelementEnd();
           }
-        },
-        factory: () => new MyComp()
+        }
       });
     }
 
@@ -907,11 +913,11 @@ describe('event listeners', () => {
 
       onClick(comp: any) { this.comp = comp; }
 
+      static ngFactoryDef = () => new App();
       static ngComponentDef = ɵɵdefineComponent({
         type: App,
         selectors: [['app']],
-        factory: () => new App(),
-        consts: 3,
+        decls: 3,
         vars: 0,
         template: (rf: RenderFlags, ctx: App) => {
           if (rf & RenderFlags.Create) {

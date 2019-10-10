@@ -39,6 +39,8 @@ export interface CompilerFacade {
       angularCoreEnv: CoreEnvironment, sourceMapUrl: string, meta: R3ComponentMetadataFacade): any;
   compileBase(angularCoreEnv: CoreEnvironment, sourceMapUrl: string, meta: R3BaseMetadataFacade):
       any;
+  compileFactory(
+      angularCoreEnv: CoreEnvironment, sourceMapUrl: string, meta: R3FactoryDefMetadataFacade): any;
 
   createParseSourceSpan(kind: string, typeName: string, sourceUrl: string): ParseSourceSpan;
 
@@ -65,6 +67,7 @@ export type Provider = any;
 export enum R3ResolvedDependencyType {
   Token = 0,
   Attribute = 1,
+  ChangeDetectorRef = 2,
 }
 
 export interface R3DependencyMetadataFacade {
@@ -89,7 +92,6 @@ export interface R3InjectableMetadataFacade {
   name: string;
   type: any;
   typeArgumentCount: number;
-  ctorDeps: R3DependencyMetadataFacade[]|null;
   providedIn: any;
   useClass?: any;
   useFactory?: any;
@@ -151,11 +153,21 @@ export interface R3ComponentMetadataFacade extends R3DirectiveMetadataFacade {
 
 export interface R3BaseMetadataFacade {
   name: string;
+  type: any;
   propMetadata: {[key: string]: any[]};
   inputs?: {[key: string]: string | [string, string]};
   outputs?: {[key: string]: string};
   queries?: R3QueryMetadataFacade[];
   viewQueries?: R3QueryMetadataFacade[];
+}
+
+export interface R3FactoryDefMetadataFacade {
+  name: string;
+  type: any;
+  typeArgumentCount: number;
+  deps: R3DependencyMetadataFacade[]|null;
+  injectFn: 'directiveInject'|'inject';
+  isPipe: boolean;
 }
 
 export type ViewEncapsulation = number;

@@ -52,7 +52,10 @@ import {SwTestHarness, SwTestHarnessBuilder} from '../testing/scope';
           .addUnhashedFile('/ignored/dir/file2', 'this is not handled by the SW either')
           .build();
 
-  const brokenFs = new MockFileSystemBuilder().addFile('/foo.txt', 'this is foo').build();
+  const brokenFs = new MockFileSystemBuilder()
+                       .addFile('/foo.txt', 'this is foo (broken)')
+                       .addFile('/bar.txt', 'this is bar (broken)')
+                       .build();
 
   const brokenManifest: Manifest = {
     configVersion: 1,
@@ -70,6 +73,35 @@ import {SwTestHarness, SwTestHarnessBuilder} from '../testing/scope';
     dataGroups: [],
     navigationUrls: processNavigationUrls(''),
     hashTable: tmpHashTableForFs(brokenFs, {'/foo.txt': true}),
+  };
+
+  const brokenLazyManifest: Manifest = {
+    configVersion: 1,
+    timestamp: 1234567890123,
+    index: '/foo.txt',
+    assetGroups: [
+      {
+        name: 'assets',
+        installMode: 'prefetch',
+        updateMode: 'prefetch',
+        urls: [
+          '/foo.txt',
+        ],
+        patterns: [],
+      },
+      {
+        name: 'lazy-assets',
+        installMode: 'lazy',
+        updateMode: 'lazy',
+        urls: [
+          '/bar.txt',
+        ],
+        patterns: [],
+      },
+    ],
+    dataGroups: [],
+    navigationUrls: processNavigationUrls(''),
+    hashTable: tmpHashTableForFs(brokenFs, {'/bar.txt': true}),
   };
 
   // Manifest without navigation urls to test backward compatibility with
@@ -225,6 +257,11 @@ import {SwTestHarness, SwTestHarnessBuilder} from '../testing/scope';
 
   const brokenServer =
       new MockServerStateBuilder().withStaticFiles(brokenFs).withManifest(brokenManifest).build();
+
+  const brokenLazyServer = new MockServerStateBuilder()
+                               .withStaticFiles(brokenFs)
+                               .withManifest(brokenLazyManifest)
+                               .build();
 
   const server404 = new MockServerStateBuilder().withStaticFiles(dist).build();
 
@@ -433,15 +470,9 @@ import {SwTestHarness, SwTestHarnessBuilder} from '../testing/scope';
     });
 
     it('handles empty client ID', async() => {
-      const navRequest = (url: string, clientId: string | null) =>
-          makeRequest(scope, url, clientId, {
-            headers: {Accept: 'text/plain, text/html, text/css'},
-            mode: 'navigate',
-          });
-
       // Initialize the SW.
-      expect(await navRequest('/foo/file1', '')).toEqual('this is foo');
-      expect(await navRequest('/bar/file2', null)).toEqual('this is foo');
+      expect(await makeNavigationRequest(scope, '/foo/file1', '')).toEqual('this is foo');
+      expect(await makeNavigationRequest(scope, '/bar/file2', null)).toEqual('this is foo');
       await driver.initialized;
 
       // Update to a new version.
@@ -449,8 +480,8 @@ import {SwTestHarness, SwTestHarnessBuilder} from '../testing/scope';
       expect(await driver.checkForUpdate()).toEqual(true);
 
       // Correctly handle navigation requests, even if `clientId` is null/empty.
-      expect(await navRequest('/foo/file1', '')).toEqual('this is foo v2');
-      expect(await navRequest('/bar/file2', null)).toEqual('this is foo v2');
+      expect(await makeNavigationRequest(scope, '/foo/file1', '')).toEqual('this is foo v2');
+      expect(await makeNavigationRequest(scope, '/bar/file2', null)).toEqual('this is foo v2');
     });
 
     it('checks for updates on restart', async() => {
@@ -480,9 +511,7 @@ import {SwTestHarness, SwTestHarnessBuilder} from '../testing/scope';
       await driver.initialized;
       server.clearRequests();
 
-      expect(await makeRequest(scope, '/foo.txt', 'default', {
-        mode: 'navigate',
-      })).toEqual('this is foo');
+      expect(await makeNavigationRequest(scope, '/foo.txt')).toEqual('this is foo');
 
       scope.advance(12000);
       await driver.idle.empty;
@@ -495,13 +524,9 @@ import {SwTestHarness, SwTestHarnessBuilder} from '../testing/scope';
       await driver.initialized;
       server.clearRequests();
 
-      expect(await makeRequest(scope, '/foo.txt', 'default', {
-        mode: 'navigate',
-      })).toEqual('this is foo');
+      expect(await makeNavigationRequest(scope, '/foo.txt')).toEqual('this is foo');
 
-      expect(await makeRequest(scope, '/foo.txt', 'default', {
-        mode: 'navigate',
-      })).toEqual('this is foo');
+      expect(await makeNavigationRequest(scope, '/foo.txt')).toEqual('this is foo');
 
       scope.advance(12000);
       await driver.idle.empty;
@@ -540,12 +565,7 @@ import {SwTestHarness, SwTestHarnessBuilder} from '../testing/scope';
       expect(await driver.checkForUpdate()).toEqual(true);
       serverUpdate.clearRequests();
 
-      expect(await makeRequest(scope, '/file1', 'default', {
-        headers: {
-          'Accept': 'text/plain, text/html, text/css',
-        },
-        mode: 'navigate',
-      })).toEqual('this is foo v2');
+      expect(await makeNavigationRequest(scope, '/file1')).toEqual('this is foo v2');
 
       expect(client.messages).toEqual([
         {
@@ -715,7 +735,7 @@ import {SwTestHarness, SwTestHarnessBuilder} from '../testing/scope';
       await makeRequest(scope, '/foo.txt', undefined, {headers: {'ngsw-bypass': 'anything'}});
       server.assertNoRequestFor('/foo.txt');
 
-      await makeRequest(scope, '/foo.txt', undefined, {headers: {'ngsw-bypass': null}});
+      await makeRequest(scope, '/foo.txt', undefined, {headers: {'ngsw-bypass': null !}});
       server.assertNoRequestFor('/foo.txt');
 
       await makeRequest(scope, '/foo.txt', undefined, {headers: {'NGSW-bypass': 'upperCASE'}});
@@ -1012,10 +1032,8 @@ import {SwTestHarness, SwTestHarnessBuilder} from '../testing/scope';
     });
 
     describe('routing', () => {
-      const navRequest = (url: string, init = {}) => makeRequest(scope, url, undefined, {
-        headers: {Accept: 'text/plain, text/html, text/css'},
-        mode: 'navigate', ...init,
-      });
+      const navRequest = (url: string, init = {}) =>
+          makeNavigationRequest(scope, url, undefined, init);
 
       beforeEach(async() => {
         expect(await makeRequest(scope, '/foo.txt')).toEqual('this is foo');
@@ -1169,7 +1187,7 @@ import {SwTestHarness, SwTestHarnessBuilder} from '../testing/scope';
         (scope.registration as any).scope = 'http://site.com';
         driver = new Driver(scope, scope, new CacheDatabase(scope, scope));
 
-        expect(await makeRequest(scope, '/foo.txt')).toEqual('this is foo');
+        expect(await makeRequest(scope, '/foo.txt')).toEqual('this is foo (broken)');
       });
 
       it('enters degraded mode when update has a bad index', async() => {
@@ -1212,6 +1230,61 @@ import {SwTestHarness, SwTestHarnessBuilder} from '../testing/scope';
         server.assertSawRequestFor('/foo.txt');
       });
 
+      it('enters degraded mode when something goes wrong with the latest version', async() => {
+        await driver.initialized;
+
+        // Two clients on initial version.
+        expect(await makeRequest(scope, '/foo.txt', 'client1')).toBe('this is foo');
+        expect(await makeRequest(scope, '/foo.txt', 'client2')).toBe('this is foo');
+
+        // Install a broken version (`bar.txt` has invalid hash).
+        scope.updateServerState(brokenLazyServer);
+        await driver.checkForUpdate();
+
+        // Update `client1` but not `client2`.
+        await makeNavigationRequest(scope, '/', 'client1');
+        server.clearRequests();
+        brokenLazyServer.clearRequests();
+
+        expect(await makeRequest(scope, '/foo.txt', 'client1')).toBe('this is foo (broken)');
+        expect(await makeRequest(scope, '/foo.txt', 'client2')).toBe('this is foo');
+        server.assertNoOtherRequests();
+        brokenLazyServer.assertNoOtherRequests();
+
+        // Trying to fetch `bar.txt` (which has an invalid hash) should invalidate the latest
+        // version, enter degraded mode and "forget" clients that are on that version (i.e.
+        // `client1`).
+        expect(await makeRequest(scope, '/bar.txt', 'client1')).toBe('this is bar (broken)');
+        expect(driver.state).toBe(DriverReadyState.EXISTING_CLIENTS_ONLY);
+        brokenLazyServer.sawRequestFor('/bar.txt');
+        brokenLazyServer.clearRequests();
+
+        // `client1` should not be served from the network.
+        expect(await makeRequest(scope, '/foo.txt', 'client1')).toBe('this is foo (broken)');
+        brokenLazyServer.sawRequestFor('/foo.txt');
+
+        // `client2` should still be served from the old version (since it never updated).
+        expect(await makeRequest(scope, '/foo.txt', 'client2')).toBe('this is foo');
+        server.assertNoOtherRequests();
+        brokenLazyServer.assertNoOtherRequests();
+      });
+
+      it('recovers from degraded `EXISTING_CLIENTS_ONLY` mode as soon as there is a valid update',
+         async() => {
+           await driver.initialized;
+           expect(driver.state).toBe(DriverReadyState.NORMAL);
+
+           // Install a broken version.
+           scope.updateServerState(brokenServer);
+           await driver.checkForUpdate();
+           expect(driver.state).toBe(DriverReadyState.EXISTING_CLIENTS_ONLY);
+
+           // Install a good version.
+           scope.updateServerState(serverUpdate);
+           await driver.checkForUpdate();
+           expect(driver.state).toBe(DriverReadyState.NORMAL);
+         });
+
       it('ignores invalid `only-if-cached` requests ', async() => {
         const requestFoo = (cache: RequestCache | 'only-if-cached', mode: RequestMode) =>
             makeRequest(scope, '/foo.txt', undefined, {cache, mode});
@@ -1253,7 +1326,7 @@ import {SwTestHarness, SwTestHarnessBuilder} from '../testing/scope';
         expect(requestUrls2).toContain(httpsRequestUrl);
       });
 
-      describe('Backwards compatibility with v5', () => {
+      describe('backwards compatibility with v5', () => {
         beforeEach(() => {
           const serverV5 = new MockServerStateBuilder()
                                .withStaticFiles(dist)
@@ -1265,7 +1338,7 @@ import {SwTestHarness, SwTestHarnessBuilder} from '../testing/scope';
         });
 
         // Test this bug: https://github.com/angular/angular/issues/27209
-        it('Fill previous versions of manifests with default navigation urls for backwards compatibility',
+        it('fills previous versions of manifests with default navigation urls for backwards compatibility',
            async() => {
              expect(await makeRequest(scope, '/foo.txt')).toEqual('this is foo');
              await driver.initialized;
@@ -1278,13 +1351,25 @@ import {SwTestHarness, SwTestHarnessBuilder} from '../testing/scope';
 })();
 
 async function makeRequest(
-    scope: SwTestHarness, url: string, clientId: string | null = 'default',
-    init?: Object): Promise<string|null> {
-  const [resPromise, done] = scope.handleFetch(new MockRequest(url, init), clientId);
-  await done;
-  const res = await resPromise;
-  if (res !== undefined && res.ok) {
-    return res.text();
-  }
-  return null;
-}
+    scope: SwTestHarness, url: string, clientId: string | null = 'default', init?: Object):
+    Promise<string|null> {
+      const [resPromise, done] = scope.handleFetch(new MockRequest(url, init), clientId);
+      await done;
+      const res = await resPromise;
+      if (res !== undefined && res.ok) {
+        return res.text();
+      }
+      return null;
+    }
+
+function makeNavigationRequest(
+    scope: SwTestHarness, url: string, clientId?: string | null, init: Object = {}):
+    Promise<string|null> {
+      return makeRequest(scope, url, clientId, {
+        headers: {
+          Accept: 'text/plain, text/html, text/css',
+          ...(init as any).headers,
+        },
+        mode: 'navigate', ...init,
+      });
+    }

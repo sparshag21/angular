@@ -10,6 +10,9 @@ import {ParseSourceSpan} from '../parse_util';
 
 export class Message {
   sources: MessageSpan[];
+  id: string = this.customId;
+  /** The id to use if there is no custom id and if `i18nLegacyMessageIdFormat` is true */
+  legacyId?: string = '';
 
   /**
    * @param nodes message AST
@@ -17,12 +20,12 @@ export class Message {
    * @param placeholderToMessage maps placeholder names to messages (used for nested ICU messages)
    * @param meaning
    * @param description
-   * @param id
+   * @param customId
    */
   constructor(
       public nodes: Node[], public placeholders: {[phName: string]: string},
       public placeholderToMessage: {[phName: string]: Message}, public meaning: string,
-      public description: string, public id: string) {
+      public description: string, public customId: string) {
     if (nodes.length) {
       this.sources = [{
         filePath: nodes[0].sourceSpan.start.file.url,

@@ -6,7 +6,7 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {BoundTarget, DirectiveMeta} from '@angular/compiler';
+import {BoundTarget, DirectiveMeta, SchemaMetadata} from '@angular/compiler';
 import * as ts from 'typescript';
 
 import {Reference} from '../../imports';
@@ -30,6 +30,13 @@ export interface TypeCheckableDirectiveMeta extends DirectiveMeta {
  */
 export interface TypeCheckBlockMetadata {
   /**
+   * A unique identifier for the class which gave rise to this TCB.
+   *
+   * This can be used to map errors back to the `ts.ClassDeclaration` for the component.
+   */
+  id: string;
+
+  /**
    * Semantic information about the template of the component.
    */
   boundTarget: BoundTarget<TypeCheckableDirectiveMeta>;
@@ -38,6 +45,11 @@ export interface TypeCheckBlockMetadata {
    * Pipes used in the template of the component.
    */
   pipes: Map<string, Reference<ClassDeclaration<ts.ClassDeclaration>>>;
+
+  /**
+   * Schemas that apply to this template.
+   */
+  schemas: SchemaMetadata[];
 }
 
 export interface TypeCtorMetadata {
@@ -65,8 +77,23 @@ export interface TypeCheckingConfig {
    * checked, but not the assignment of the resulting type to the `input` property of whichever
    * directive or component is receiving the binding. If set to `true`, both sides of the assignment
    * are checked.
+   *
+   * This flag only affects bindings to components/directives. Bindings to the DOM are checked if
+   * `checkTypeOfDomBindings` is set.
    */
-  checkTypeOfBindings: boolean;
+  checkTypeOfInputBindings: boolean;
+
+  /**
+   * Whether to check the left-hand side type of binding operations to DOM properties.
+   *
+   * As `checkTypeOfBindings`, but only applies to bindings to DOM properties.
+   *
+   * This does not affect the use of the `DomSchemaChecker` to validate the template against the DOM
+   * schema. Rather, this flag is an experimental, not yet complete feature which uses the
+   * lib.dom.d.ts DOM typings in TypeScript to validate that DOM bindings are of the correct type
+   * for assignability to the underlying DOM element properties.
+   */
+  checkTypeOfDomBindings: boolean;
 
   /**
    * Whether to include type information from pipes in the type-checking operation.
@@ -103,4 +130,48 @@ export interface TypeCheckingConfig {
    * This is currently an unsupported feature.
    */
   checkQueries: false;
+}
+
+
+export type TemplateSourceMapping =
+    DirectTemplateSourceMapping | IndirectTemplateSourceMapping | ExternalTemplateSourceMapping;
+
+/**
+ * A mapping to an inline template in a TS file.
+ *
+ * `ParseSourceSpan`s for this template should be accurate for direct reporting in a TS error
+ * message.
+ */
+export interface DirectTemplateSourceMapping {
+  type: 'direct';
+  node: ts.StringLiteral|ts.NoSubstitutionTemplateLiteral;
+}
+
+/**
+ * A mapping to a template which is still in a TS file, but where the node positions in any
+ * `ParseSourceSpan`s are not accurate for one reason or another.
+ *
+ * This can occur if the template expression was interpolated in a way where the compiler could not
+ * construct a contiguous mapping for the template string. The `node` refers to the `template`
+ * expression.
+ */
+export interface IndirectTemplateSourceMapping {
+  type: 'indirect';
+  componentClass: ClassDeclaration;
+  node: ts.Expression;
+  template: string;
+}
+
+/**
+ * A mapping to a template declared in an external HTML file, where node positions in
+ * `ParseSourceSpan`s represent accurate offsets into the external file.
+ *
+ * In this case, the given `node` refers to the `templateUrl` expression.
+ */
+export interface ExternalTemplateSourceMapping {
+  type: 'external';
+  componentClass: ClassDeclaration;
+  node: ts.Expression;
+  template: string;
+  templateUrl: string;
 }

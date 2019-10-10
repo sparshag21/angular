@@ -442,7 +442,7 @@ describe('AppComponent', () => {
       });
 
       it('should update the document title', async () => {
-        const titleService = TestBed.get(Title);
+        const titleService = TestBed.inject(Title);
         spyOn(titleService, 'setTitle');
 
         await navigateTo('guide/pipes');
@@ -450,7 +450,7 @@ describe('AppComponent', () => {
       });
 
       it('should update the document title, with a default value if the document has no title', async () => {
-        const titleService = TestBed.get(Title);
+        const titleService = TestBed.inject(Title);
         spyOn(titleService, 'setTitle');
 
         await navigateTo('no-title');
@@ -630,6 +630,11 @@ describe('AppComponent', () => {
       };
 
 
+      beforeEach(() => {
+        tocContainer = null;
+        toc = null;
+      });
+
       it('should show/hide `<aio-toc>` based on `hasFloatingToc`', () => {
         expect(tocContainer).toBeFalsy();
         expect(toc).toBeFalsy();
@@ -672,7 +677,7 @@ describe('AppComponent', () => {
       });
 
       it('should not be loaded/registered until necessary', () => {
-        const loader: TestElementsLoader = fixture.debugElement.injector.get(ElementsLoader);
+        const loader = fixture.debugElement.injector.get(ElementsLoader) as unknown as TestElementsLoader;
         expect(loader.loadCustomElement).not.toHaveBeenCalled();
 
         setHasFloatingToc(true);
@@ -777,14 +782,14 @@ describe('AppComponent', () => {
 
       describe('showing search results', () => {
         it('should not display search results when query is empty', () => {
-          const searchService: MockSearchService = TestBed.get(SearchService);
+          const searchService = TestBed.inject(SearchService) as Partial<SearchService> as MockSearchService;
           searchService.searchResults.next({ query: '', results: [] });
           fixture.detectChanges();
           expect(component.showSearchResults).toBe(false);
         });
 
         it('should hide the results when a search result is selected', () => {
-          const searchService: MockSearchService = TestBed.get(SearchService);
+          const searchService = TestBed.inject(SearchService) as Partial<SearchService> as MockSearchService;
 
           const results = [
             { path: 'news', title: 'News', type: 'marketing', keywords: '', titleWords: '', deprecated: false }
@@ -821,14 +826,14 @@ describe('AppComponent', () => {
         const description =
             `should ${doRedirect ? '' : 'not '}redirect to 'docs' if deployment mode is '${mode}' ` +
             'and at a marketing page';
-        const verifyNoRedirection = () => expect(TestBed.get(LocationService).replace).not.toHaveBeenCalled();
-        const verifyRedirection = () => expect(TestBed.get(LocationService).replace).toHaveBeenCalledWith('docs');
+        const verifyNoRedirection = () => expect(TestBed.inject(LocationService).replace).not.toHaveBeenCalled();
+        const verifyRedirection = () => expect(TestBed.inject(LocationService).replace).toHaveBeenCalledWith('docs');
         const verifyPossibleRedirection = doRedirect ? verifyRedirection : verifyNoRedirection;
 
         it(description, () => {
           createTestingModule('', mode);
 
-          const navService = TestBed.get(NavigationService) as NavigationService;
+          const navService = TestBed.inject(NavigationService);
           const testCurrentNodes = navService.currentNodes = new Subject<CurrentNodes>();
 
           initializeTest(false);

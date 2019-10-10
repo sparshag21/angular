@@ -6,7 +6,7 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {ConstantPool, Expression, ParseError, ParsedHostBindings, R3DirectiveMetadata, R3QueryMetadata, Statement, WrappedNodeExpr, compileDirectiveFromMetadata, makeBindingParser, parseHostBindings, verifyHostBindings} from '@angular/compiler';
+import {ConstantPool, EMPTY_SOURCE_SPAN, Expression, Identifiers, ParseError, ParsedHostBindings, R3DirectiveMetadata, R3QueryMetadata, Statement, WrappedNodeExpr, compileDirectiveFromMetadata, makeBindingParser, parseHostBindings, verifyHostBindings} from '@angular/compiler';
 import * as ts from 'typescript';
 
 import {ErrorCode, FatalDiagnosticError} from '../../diagnostics';
@@ -17,6 +17,7 @@ import {DynamicValue, EnumValue, PartialEvaluator} from '../../partial_evaluator
 import {ClassDeclaration, ClassMember, ClassMemberKind, Decorator, ReflectionHost, filterToMembersWithDecorator, reflectObjectLiteral} from '../../reflection';
 import {AnalysisOutput, CompileResult, DecoratorHandler, DetectResult, HandlerPrecedence} from '../../transform';
 
+import {compileNgFactoryDefField} from './factory';
 import {generateSetClassMetadataCall} from './metadata';
 import {findAngularDecorator, getValidConstructorDependencies, readBaseClass, unwrapExpression, unwrapForwardRef} from './util';
 
@@ -72,6 +73,10 @@ export class DirectiveDecoratorHandler implements
       });
     }
 
+    if (analysis && !analysis.selector) {
+      this.metaRegistry.registerAbstractDirective(node);
+    }
+
     if (analysis === undefined) {
       return {};
     }
@@ -86,23 +91,29 @@ export class DirectiveDecoratorHandler implements
   }
 
   compile(node: ClassDeclaration, analysis: DirectiveHandlerData, pool: ConstantPool):
-      CompileResult {
-    const res = compileDirectiveFromMetadata(analysis.meta, pool, makeBindingParser());
-    const statements = res.statements;
+      CompileResult[] {
+    const meta = analysis.meta;
+    const res = compileDirectiveFromMetadata(meta, pool, makeBindingParser());
+    const factoryRes = compileNgFactoryDefField({...meta, injectFn: Identifiers.directiveInject});
     if (analysis.metadataStmt !== null) {
-      statements.push(analysis.metadataStmt);
+      factoryRes.statements.push(analysis.metadataStmt);
     }
-    return {
-      name: 'ngDirectiveDef',
-      initializer: res.expression,
-      statements: statements,
-      type: res.type,
-    };
+    return [
+      factoryRes, {
+        name: 'ngDirectiveDef',
+        initializer: res.expression,
+        statements: [],
+        type: res.type,
+      }
+    ];
   }
 }
 
 /**
- * Helper function to extract metadata from a `Directive` or `Component`.
+ * Helper function to extract metadata from a `Directive` or `Component`. `Directive`s without a
+ * selector are allowed to be used for abstract base classes. These abstract directives should not
+ * appear in the declarations of an `NgModule` and additional verification is done when processing
+ * the module.
  */
 export function extractDirectiveMetadata(
     clazz: ClassDeclaration, decorator: Decorator, reflector: ReflectionHost,
@@ -112,17 +123,22 @@ export function extractDirectiveMetadata(
   metadata: R3DirectiveMetadata,
   decoratedElements: ClassMember[],
 }|undefined {
-  if (decorator.args === null || decorator.args.length !== 1) {
+  let directive: Map<string, ts.Expression>;
+  if (decorator.args === null || decorator.args.length === 0) {
+    directive = new Map<string, ts.Expression>();
+  } else if (decorator.args.length !== 1) {
     throw new FatalDiagnosticError(
         ErrorCode.DECORATOR_ARITY_WRONG, decorator.node,
         `Incorrect number of arguments to @${decorator.name} decorator`);
+  } else {
+    const meta = unwrapExpression(decorator.args[0]);
+    if (!ts.isObjectLiteralExpression(meta)) {
+      throw new FatalDiagnosticError(
+          ErrorCode.DECORATOR_ARG_NOT_LITERAL, meta,
+          `@${decorator.name} argument must be literal.`);
+    }
+    directive = reflectObjectLiteral(meta);
   }
-  const meta = unwrapExpression(decorator.args[0]);
-  if (!ts.isObjectLiteralExpression(meta)) {
-    throw new FatalDiagnosticError(
-        ErrorCode.DECORATOR_ARG_NOT_LITERAL, meta, `@${decorator.name} argument must be literal.`);
-  }
-  const directive = reflectObjectLiteral(meta);
 
   if (directive.has('jit')) {
     // The only allowed value is true, so there's no need to expand further.
@@ -188,9 +204,11 @@ export function extractDirectiveMetadata(
     }
     // use default selector in case selector is an empty string
     selector = resolved === '' ? defaultSelector : resolved;
-  }
-  if (!selector) {
-    throw new Error(`Directive ${clazz.name.text} has no selector, please add it!`);
+    if (!selector) {
+      throw new FatalDiagnosticError(
+          ErrorCode.DIRECTIVE_MISSING_SELECTOR, expr,
+          `Directive ${clazz.name.text} has no selector, please add it!`);
+    }
   }
 
   const host = extractHostBindings(decoratedElements, evaluator, coreModule, directive);
@@ -227,7 +245,7 @@ export function extractDirectiveMetadata(
     outputs: {...outputsFromMeta, ...outputsFromFields}, queries, viewQueries, selector,
     type: new WrappedNodeExpr(clazz.name),
     typeArgumentCount: reflector.getGenericArityOfClass(clazz) || 0,
-    typeSourceSpan: null !, usesInheritance, exportAs, providers
+    typeSourceSpan: EMPTY_SOURCE_SPAN, usesInheritance, exportAs, providers
   };
   return {decoratedElements, decorator: directive, metadata};
 }
@@ -503,7 +521,8 @@ export function extractHostBindings(
   const bindings = parseHostBindings(hostMetadata);
 
   // TODO: create and provide proper sourceSpan to make error message more descriptive (FW-995)
-  const errors = verifyHostBindings(bindings, /* sourceSpan */ null !);
+  // For now, pass an incorrect (empty) but valid sourceSpan.
+  const errors = verifyHostBindings(bindings, EMPTY_SOURCE_SPAN);
   if (errors.length > 0) {
     throw new FatalDiagnosticError(
         // TODO: provide more granular diagnostic and output specific host expression that triggered

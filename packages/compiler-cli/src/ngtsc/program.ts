@@ -28,7 +28,7 @@ import {NOOP_PERF_RECORDER, PerfRecorder, PerfTracker} from './perf';
 import {TypeScriptReflectionHost} from './reflection';
 import {HostResourceLoader} from './resource_loader';
 import {NgModuleRouteAnalyzer, entryPointKeyFor} from './routing';
-import {LocalModuleScopeRegistry, MetadataDtsModuleScopeResolver} from './scope';
+import {CompoundComponentScopeReader, LocalModuleScopeRegistry, MetadataDtsModuleScopeResolver} from './scope';
 import {FactoryGenerator, FactoryInfo, GeneratedShimsHostWrapper, ShimGenerator, SummaryGenerator, TypeCheckShimGenerator, generatedFactoryTransform} from './shims';
 import {ivySwitchTransform} from './switch';
 import {IvyCompilation, declarationTransformFactory, ivyTransformFactory} from './transform';
@@ -116,7 +116,7 @@ export class NgtscProgram implements api.Program {
     rootFiles.push(this.typeCheckFilePath);
 
     let entryPoint: AbsoluteFsPath|null = null;
-    if (options.flatModuleOutFile !== undefined) {
+    if (options.flatModuleOutFile != null && options.flatModuleOutFile !== '') {
       entryPoint = findFlatIndexEntryPoint(normalizedRootNames);
       if (entryPoint === null) {
         // This error message talks specifically about having a single .ts file in "files". However
@@ -175,7 +175,7 @@ export class NgtscProgram implements api.Program {
   }
 
   getNgOptionDiagnostics(cancellationToken?: ts.CancellationToken|
-                         undefined): ReadonlyArray<ts.Diagnostic|api.Diagnostic> {
+                         undefined): ReadonlyArray<ts.Diagnostic> {
     return this.constructionDiagnostics;
   }
 
@@ -197,8 +197,8 @@ export class NgtscProgram implements api.Program {
   }
 
   getNgSemanticDiagnostics(
-      fileName?: string|undefined, cancellationToken?: ts.CancellationToken|
-                                   undefined): ReadonlyArray<ts.Diagnostic|api.Diagnostic> {
+      fileName?: string|undefined,
+      cancellationToken?: ts.CancellationToken|undefined): ReadonlyArray<ts.Diagnostic> {
     const compilation = this.ensureAnalyzed();
     const diagnostics = [...compilation.diagnostics, ...this.getTemplateDiagnostics()];
     if (this.entryPoint !== null && this.exportReferenceGraph !== null) {
@@ -400,7 +400,9 @@ export class NgtscProgram implements api.Program {
         applyTemplateContextGuards: true,
         checkQueries: false,
         checkTemplateBodies: true,
-        checkTypeOfBindings: true,
+        checkTypeOfInputBindings: true,
+        // Even in full template type-checking mode, DOM binding checks are not quite ready yet.
+        checkTypeOfDomBindings: false,
         checkTypeOfPipes: true,
         strictSafeNavigationTypes: true,
       };
@@ -409,7 +411,8 @@ export class NgtscProgram implements api.Program {
         applyTemplateContextGuards: false,
         checkQueries: false,
         checkTemplateBodies: false,
-        checkTypeOfBindings: false,
+        checkTypeOfInputBindings: false,
+        checkTypeOfDomBindings: false,
         checkTypeOfPipes: false,
         strictSafeNavigationTypes: false,
       };
@@ -476,7 +479,8 @@ export class NgtscProgram implements api.Program {
     const localMetaReader = new CompoundMetadataReader([localMetaRegistry, this.incrementalState]);
     const depScopeReader = new MetadataDtsModuleScopeResolver(dtsReader, aliasGenerator);
     const scopeRegistry = new LocalModuleScopeRegistry(
-        localMetaReader, depScopeReader, this.refEmitter, aliasGenerator);
+        localMetaReader, depScopeReader, this.refEmitter, aliasGenerator, this.incrementalState);
+    const scopeReader = new CompoundComponentScopeReader([scopeRegistry, this.incrementalState]);
     const metaRegistry =
         new CompoundMetadataRegistry([localMetaRegistry, scopeRegistry, this.incrementalState]);
 
@@ -502,9 +506,10 @@ export class NgtscProgram implements api.Program {
     const handlers = [
       new BaseDefDecoratorHandler(this.reflector, evaluator, this.isCore),
       new ComponentDecoratorHandler(
-          this.reflector, evaluator, metaRegistry, this.metaReader !, scopeRegistry, this.isCore,
-          this.resourceManager, this.rootDirs, this.options.preserveWhitespaces || false,
-          this.options.i18nUseExternalIds !== false, this.moduleResolver, this.cycleAnalyzer,
+          this.reflector, evaluator, metaRegistry, this.metaReader !, scopeReader, scopeRegistry,
+          this.isCore, this.resourceManager, this.rootDirs,
+          this.options.preserveWhitespaces || false, this.options.i18nUseExternalIds !== false,
+          this.options.i18nLegacyMessageIdFormat || '', this.moduleResolver, this.cycleAnalyzer,
           this.refEmitter, this.defaultImportTracker, this.incrementalState),
       new DirectiveDecoratorHandler(
           this.reflector, evaluator, metaRegistry, this.defaultImportTracker, this.isCore),
@@ -512,9 +517,9 @@ export class NgtscProgram implements api.Program {
           this.reflector, this.defaultImportTracker, this.isCore,
           this.options.strictInjectionParameters || false),
       new NgModuleDecoratorHandler(
-          this.reflector, evaluator, metaRegistry, scopeRegistry, referencesRegistry, this.isCore,
-          this.routeAnalyzer, this.refEmitter, this.defaultImportTracker,
-          this.options.i18nInLocale),
+          this.reflector, evaluator, this.metaReader, metaRegistry, scopeRegistry,
+          referencesRegistry, this.isCore, this.routeAnalyzer, this.refEmitter,
+          this.defaultImportTracker, this.options.i18nInLocale),
       new PipeDecoratorHandler(
           this.reflector, evaluator, metaRegistry, this.defaultImportTracker, this.isCore),
     ];

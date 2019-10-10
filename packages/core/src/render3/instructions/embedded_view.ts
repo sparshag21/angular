@@ -11,12 +11,14 @@ import {assertLContainerOrUndefined} from '../assert';
 import {ACTIVE_INDEX, CONTAINER_HEADER_OFFSET, LContainer} from '../interfaces/container';
 import {RenderFlags} from '../interfaces/definition';
 import {TContainerNode, TNodeType} from '../interfaces/node';
-import {FLAGS, LView, LViewFlags, PARENT, QUERIES, TVIEW, TView, T_HOST} from '../interfaces/view';
+import {CONTEXT, LView, LViewFlags, PARENT, TVIEW, TView, T_HOST} from '../interfaces/view';
 import {assertNodeType} from '../node_assert';
 import {insertView, removeView} from '../node_manipulation';
-import {enterView, getIsParent, getLView, getPreviousOrParentTNode, isCreationMode, leaveView, setIsParent, setPreviousOrParentTNode} from '../state';
-import {resetPreOrderHookFlags} from '../util/view_utils';
-import {assignTViewNodeToLView, createLView, createTView, refreshDescendantViews} from './shared';
+import {getIsParent, getLView, getPreviousOrParentTNode, selectView, setIsParent, setPreviousOrParentTNode} from '../state';
+import {isCreationMode} from '../util/view_utils';
+
+import {assignTViewNodeToLView, createLView, createTView, refreshView, renderView} from './shared';
+
 
 /**
  * Marks the start of an embedded view.
@@ -26,8 +28,7 @@ import {assignTViewNodeToLView, createLView, createTView, refreshDescendantViews
  *
  * @codeGenApi
  */
-export function ɵɵembeddedViewStart(
-    viewBlockId: number, consts: number, vars: number): RenderFlags {
+export function ɵɵembeddedViewStart(viewBlockId: number, decls: number, vars: number): RenderFlags {
   const lView = getLView();
   const previousOrParentTNode = getPreviousOrParentTNode();
   // The previous node can be a view node if we are processing an inline for loop
@@ -41,22 +42,17 @@ export function ɵɵembeddedViewStart(
 
   if (viewToRender) {
     setIsParent();
-    enterView(viewToRender, viewToRender[TVIEW].node);
+    selectView(viewToRender, viewToRender[TVIEW].node);
   } else {
     // When we create a new LView, we always reset the state of the instructions.
     viewToRender = createLView(
-        lView,
-        getOrCreateEmbeddedTView(viewBlockId, consts, vars, containerTNode as TContainerNode), null,
-        LViewFlags.CheckAlways, null, null);
-
-    if (lContainer[QUERIES]) {
-      viewToRender[QUERIES] = lContainer[QUERIES] !.createView();
-    }
+        lView, getOrCreateEmbeddedTView(viewBlockId, decls, vars, containerTNode as TContainerNode),
+        null, LViewFlags.CheckAlways, null, null);
 
     const tParentNode = getIsParent() ? previousOrParentTNode :
                                         previousOrParentTNode && previousOrParentTNode.parent;
     assignTViewNodeToLView(viewToRender[TVIEW], tParentNode, viewBlockId, viewToRender);
-    enterView(viewToRender, viewToRender[TVIEW].node);
+    selectView(viewToRender, viewToRender[TVIEW].node);
   }
   if (lContainer) {
     if (isCreationMode(viewToRender)) {
@@ -77,13 +73,13 @@ export function ɵɵembeddedViewStart(
  * it with the same index (since it's in the same template).
  *
  * @param viewIndex The index of the TView in TNode.tViews
- * @param consts The number of nodes, local refs, and pipes in this template
+ * @param decls The number of nodes, local refs, and pipes in this template
  * @param vars The number of bindings and pure function bindings in this template
  * @param container The parent container in which to look for the view's static data
  * @returns TView
  */
 function getOrCreateEmbeddedTView(
-    viewIndex: number, consts: number, vars: number, parent: TContainerNode): TView {
+    viewIndex: number, decls: number, vars: number, parent: TContainerNode): TView {
   const tView = getLView()[TVIEW];
   ngDevMode && assertNodeType(parent, TNodeType.Container);
   const containerTViews = parent.tViews as TView[];
@@ -91,7 +87,8 @@ function getOrCreateEmbeddedTView(
   ngDevMode && assertEqual(Array.isArray(containerTViews), true, 'TViews should be in an array');
   if (viewIndex >= containerTViews.length || containerTViews[viewIndex] == null) {
     containerTViews[viewIndex] = createTView(
-        viewIndex, null, consts, vars, tView.directiveRegistry, tView.pipeRegistry, null, null);
+        viewIndex, null, decls, vars, tView.directiveRegistry, tView.pipeRegistry, null, null,
+        tView.consts);
   }
   return containerTViews[viewIndex];
 }
@@ -130,19 +127,17 @@ function scanForView(lContainer: LContainer, startIdx: number, viewBlockId: numb
  */
 export function ɵɵembeddedViewEnd(): void {
   const lView = getLView();
+  const tView = lView[TVIEW];
   const viewHost = lView[T_HOST];
+  const context = lView[CONTEXT];
 
   if (isCreationMode(lView)) {
-    refreshDescendantViews(lView);  // creation mode pass
-    lView[FLAGS] &= ~LViewFlags.CreationMode;
+    renderView(lView, tView, context);  // creation mode pass
   }
-  resetPreOrderHookFlags(lView);
-  refreshDescendantViews(lView);  // update mode pass
+  refreshView(lView, tView, tView.template, context);  // update mode pass
+
   const lContainer = lView[PARENT] as LContainer;
   ngDevMode && assertLContainerOrUndefined(lContainer);
-  // It's always safe to run hooks here, as `leaveView` is not called during the 'finally' block
-  // of a try-catch-finally statement, so it can never be reached while unwinding the stack due to
-  // an error being thrown.
-  leaveView(lContainer[PARENT] !, /* safeToRunHooks */ true);
+  selectView(lContainer[PARENT] !, null);
   setPreviousOrParentTNode(viewHost !, false);
 }

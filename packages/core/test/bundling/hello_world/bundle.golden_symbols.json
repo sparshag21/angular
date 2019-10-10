@@ -36,9 +36,6 @@
     "name": "EMPTY_OBJ"
   },
   {
-    "name": "EmptyErrorImpl"
-  },
-  {
     "name": "FLAGS"
   },
   {
@@ -72,7 +69,7 @@
     "name": "NG_ELEMENT_ID"
   },
   {
-    "name": "NG_INJECTABLE_DEF"
+    "name": "NG_FACTORY_DEF"
   },
   {
     "name": "NG_PIPE_DEF"
@@ -85,9 +82,6 @@
   },
   {
     "name": "NodeInjectorFactory"
-  },
-  {
-    "name": "ObjectUnsubscribedErrorImpl"
   },
   {
     "name": "PARENT"
@@ -105,9 +99,6 @@
     "name": "RENDERER_FACTORY"
   },
   {
-    "name": "RendererStyleFlags3"
-  },
-  {
     "name": "SANITIZER"
   },
   {
@@ -118,9 +109,6 @@
   },
   {
     "name": "T_HOST"
-  },
-  {
-    "name": "UnsubscriptionErrorImpl"
   },
   {
     "name": "ViewEncapsulation"
@@ -135,10 +123,10 @@
     "name": "__self"
   },
   {
-    "name": "__values"
+    "name": "__window"
   },
   {
-    "name": "__window"
+    "name": "_elementExitFn"
   },
   {
     "name": "_global"
@@ -154,9 +142,6 @@
   },
   {
     "name": "appendChild"
-  },
-  {
-    "name": "applyOnCreateInstructions"
   },
   {
     "name": "attachPatchData"
@@ -175,12 +160,6 @@
   },
   {
     "name": "checkNoChangesMode"
-  },
-  {
-    "name": "checkView"
-  },
-  {
-    "name": "componentRefresh"
   },
   {
     "name": "createLView"
@@ -219,13 +198,13 @@
     "name": "domRendererFactory3"
   },
   {
-    "name": "enterView"
+    "name": "executeCheckHooks"
   },
   {
-    "name": "executeHooks"
+    "name": "executeElementExitFn"
   },
   {
-    "name": "executePreOrderHooks"
+    "name": "executeInitAndCheckHooks"
   },
   {
     "name": "executeTemplate"
@@ -264,7 +243,7 @@
     "name": "getDirectiveDef"
   },
   {
-    "name": "getHighestElementOrICUContainer"
+    "name": "getFactoryDef"
   },
   {
     "name": "getHostNative"
@@ -289,6 +268,9 @@
   },
   {
     "name": "getNativeByTNode"
+  },
+  {
+    "name": "getNativeByTNodeOrNull"
   },
   {
     "name": "getNodeInjectable"
@@ -321,19 +303,13 @@
     "name": "getPreviousOrParentTNode"
   },
   {
-    "name": "getRenderFlags"
-  },
-  {
     "name": "getRenderParent"
   },
   {
-    "name": "getRootContext"
-  },
-  {
-    "name": "getRootView"
-  },
-  {
     "name": "getSelectedIndex"
+  },
+  {
+    "name": "hasActiveElementFlag"
   },
   {
     "name": "hasParentInjector"
@@ -343,6 +319,9 @@
   },
   {
     "name": "incrementActiveDirectiveId"
+  },
+  {
+    "name": "incrementInitPhaseFlags"
   },
   {
     "name": "initNodeFlags"
@@ -363,9 +342,6 @@
     "name": "isComponentDef"
   },
   {
-    "name": "isCreationMode"
-  },
-  {
     "name": "isFactory"
   },
   {
@@ -381,10 +357,10 @@
     "name": "isRootView"
   },
   {
-    "name": "leaveView"
+    "name": "locateHostElement"
   },
   {
-    "name": "locateHostElement"
+    "name": "markAsComponentHost"
   },
   {
     "name": "namespaceHTMLInternal"
@@ -411,43 +387,34 @@
     "name": "postProcessBaseDirective"
   },
   {
-    "name": "queueComponentIndexForCheck"
-  },
-  {
-    "name": "readPatchedData"
-  },
-  {
-    "name": "readPatchedLView"
-  },
-  {
     "name": "refreshChildComponents"
+  },
+  {
+    "name": "refreshComponent"
   },
   {
     "name": "refreshContentQueries"
   },
   {
-    "name": "refreshDescendantViews"
+    "name": "refreshDynamicEmbeddedViews"
   },
   {
-    "name": "refreshDynamicEmbeddedViews"
+    "name": "refreshView"
+  },
+  {
+    "name": "renderChildComponents"
   },
   {
     "name": "renderComponent"
   },
   {
-    "name": "renderComponentOrTemplate"
-  },
-  {
-    "name": "renderEmbeddedTemplate"
-  },
-  {
-    "name": "renderInitialClasses"
-  },
-  {
-    "name": "renderInitialStyles"
+    "name": "renderComponent"
   },
   {
     "name": "renderStringify"
+  },
+  {
+    "name": "renderView"
   },
   {
     "name": "resetComponentState"
@@ -456,7 +423,10 @@
     "name": "resetPreOrderHookFlags"
   },
   {
-    "name": "selectInternal"
+    "name": "selectIndexInternal"
+  },
+  {
+    "name": "selectView"
   },
   {
     "name": "setActiveHostElement"
@@ -465,16 +435,13 @@
     "name": "setBindingRoot"
   },
   {
-    "name": "setCachedStylingContext"
-  },
-  {
-    "name": "setClass"
-  },
-  {
     "name": "setCurrentDirectiveDef"
   },
   {
     "name": "setCurrentQueryIndex"
+  },
+  {
+    "name": "setCurrentStyleSanitizer"
   },
   {
     "name": "setHostBindings"
@@ -495,9 +462,6 @@
     "name": "setSelectedIndex"
   },
   {
-    "name": "setStyle"
-  },
-  {
     "name": "setTNodeAndViewData"
   },
   {
@@ -507,9 +471,6 @@
     "name": "syncViewWithBlueprint"
   },
   {
-    "name": "tickRootContext"
-  },
-  {
     "name": "unwrapRNode"
   },
   {
@@ -517,12 +478,6 @@
   },
   {
     "name": "ɵɵdefineComponent"
-  },
-  {
-    "name": "ɵɵdefineInjectable"
-  },
-  {
-    "name": "ɵɵnamespaceHTML"
   },
   {
     "name": "ɵɵtext"

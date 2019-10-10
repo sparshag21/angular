@@ -7,6 +7,8 @@
  */
 
 import {ArrayType, AssertNotNull, BinaryOperator, BinaryOperatorExpr, BuiltinType, BuiltinTypeName, CastExpr, ClassStmt, CommaExpr, CommentStmt, ConditionalExpr, DeclareFunctionStmt, DeclareVarStmt, Expression, ExpressionStatement, ExpressionType, ExpressionVisitor, ExternalExpr, ExternalReference, FunctionExpr, IfStmt, InstantiateExpr, InvokeFunctionExpr, InvokeMethodExpr, JSDocCommentStmt, LiteralArrayExpr, LiteralExpr, LiteralMapExpr, MapType, NotExpr, ReadKeyExpr, ReadPropExpr, ReadVarExpr, ReturnStatement, Statement, StatementVisitor, StmtModifier, ThrowStmt, TryCatchStmt, Type, TypeVisitor, TypeofExpr, WrappedNodeExpr, WriteKeyExpr, WritePropExpr, WriteVarExpr} from '@angular/compiler';
+import {LocalizedString} from '@angular/compiler/src/output/output_ast';
+import {serializeI18nHead, serializeI18nTemplatePart} from '@angular/compiler/src/render3/view/i18n/meta';
 import * as ts from 'typescript';
 
 import {DefaultImportRecorder, ImportRewriter, NOOP_DEFAULT_IMPORT_RECORDER, NoopImportRewriter} from '../../imports';
@@ -249,6 +251,10 @@ class ExpressionTranslatorVisitor implements ExpressionVisitor, StatementVisitor
     return expr;
   }
 
+  visitLocalizedString(ast: LocalizedString, context: Context): ts.Expression {
+    return visitLocalizedString(ast, context, this);
+  }
+
   visitExternalExpr(ast: ExternalExpr, context: Context): ts.PropertyAccessExpression
       |ts.Identifier {
     if (ast.value.moduleName === null || ast.value.name === null) {
@@ -435,6 +441,10 @@ export class TypeTranslatorVisitor implements ExpressionVisitor, TypeVisitor {
     return ts.createLiteral(ast.value as string);
   }
 
+  visitLocalizedString(ast: LocalizedString, context: Context): ts.Expression {
+    return visitLocalizedString(ast, context, this);
+  }
+
   visitExternalExpr(ast: ExternalExpr, context: Context): ts.TypeNode {
     if (ast.value.moduleName === null || ast.value.name === null) {
       throw new Error(`Import unknown module or symbol`);
@@ -511,4 +521,32 @@ export class TypeTranslatorVisitor implements ExpressionVisitor, TypeVisitor {
     let expr = translateExpression(ast.expr, this.imports, NOOP_DEFAULT_IMPORT_RECORDER);
     return ts.createTypeQueryNode(expr as ts.Identifier);
   }
+}
+
+/**
+ * A helper to reduce duplication, since this functionality is required in both
+ * `ExpressionTranslatorVisitor` and `TypeTranslatorVisitor`.
+ */
+function visitLocalizedString(ast: LocalizedString, context: Context, visitor: ExpressionVisitor) {
+  let template: ts.TemplateLiteral;
+  const metaBlock = serializeI18nHead(ast.metaBlock, ast.messageParts[0]);
+  if (ast.messageParts.length === 1) {
+    template = ts.createNoSubstitutionTemplateLiteral(metaBlock);
+  } else {
+    const head = ts.createTemplateHead(metaBlock);
+    const spans: ts.TemplateSpan[] = [];
+    for (let i = 1; i < ast.messageParts.length; i++) {
+      const resolvedExpression = ast.expressions[i - 1].visitExpression(visitor, context);
+      const templatePart =
+          serializeI18nTemplatePart(ast.placeHolderNames[i - 1], ast.messageParts[i]);
+      const templateMiddle = ts.createTemplateMiddle(templatePart);
+      spans.push(ts.createTemplateSpan(resolvedExpression, templateMiddle));
+    }
+    if (spans.length > 0) {
+      // The last span is supposed to have a tail rather than a middle
+      spans[spans.length - 1].literal.kind = ts.SyntaxKind.TemplateTail;
+    }
+    template = ts.createTemplateExpression(head, spans);
+  }
+  return ts.createTaggedTemplate(ts.createIdentifier('$localize'), template);
 }

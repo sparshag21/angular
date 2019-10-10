@@ -10,7 +10,7 @@ import MagicString from 'magic-string';
 import * as ts from 'typescript';
 import {NOOP_DEFAULT_IMPORT_RECORDER} from '../../../src/ngtsc/imports';
 import {translateStatement, ImportManager} from '../../../src/ngtsc/translator';
-import {CompiledClass, CompiledFile, DecorationAnalyses} from '../analysis/decoration_analyzer';
+import {CompiledClass, CompiledFile, DecorationAnalyses} from '../analysis/types';
 import {PrivateDeclarationsAnalyses} from '../analysis/private_declarations_analyzer';
 import {SwitchMarkerAnalyses, SwitchMarkerAnalysis} from '../analysis/switch_marker_analyzer';
 import {IMPORT_PREFIX} from '../constants';
@@ -165,14 +165,12 @@ export function renderDefinitions(
       translateStatement(stmt, imports, NOOP_DEFAULT_IMPORT_RECORDER);
   const print = (stmt: Statement) =>
       printer.printNode(ts.EmitHint.Unspecified, translate(stmt), sourceFile);
-  const definitions = compiledClass.compilation
-                          .map(
-                              c => [createAssignmentStatement(name, c.name, c.initializer)]
-                                       .concat(c.statements)
-                                       .map(print)
-                                       .join('\n'))
-                          .join('\n');
-  return definitions;
+  const statements: Statement[] =
+      compiledClass.compilation.map(c => createAssignmentStatement(name, c.name, c.initializer));
+  for (const c of compiledClass.compilation) {
+    statements.push(...c.statements);
+  }
+  return statements.map(print).join('\n');
 }
 
 /**

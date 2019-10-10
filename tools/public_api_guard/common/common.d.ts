@@ -178,9 +178,9 @@ export declare class Location {
     prepareExternalUrl(url: string): string;
     replaceState(path: string, query?: string, state?: any): void;
     subscribe(onNext: (value: PopStateEvent) => void, onThrow?: ((exception: any) => void) | null, onReturn?: (() => void) | null): SubscriptionLike;
-    static joinWithSlash(start: string, end: string): string;
-    static normalizeQueryParams(params: string): string;
-    static stripTrailingSlash(url: string): string;
+    static joinWithSlash: (start: string, end: string) => string;
+    static normalizeQueryParams: (params: string) => string;
+    static stripTrailingSlash: (url: string) => string;
 }
 
 export declare const LOCATION_INITIALIZED: InjectionToken<Promise<any>>;
@@ -225,6 +225,7 @@ export declare class NgClassBase {
         [key: string]: any;
     } | null;
     static ngDirectiveDef: any;
+    static ngFactoryDef: any;
 }
 
 export declare class NgComponentOutlet implements OnChanges, OnDestroy {
@@ -238,7 +239,7 @@ export declare class NgComponentOutlet implements OnChanges, OnDestroy {
 }
 
 export declare class NgForOf<T> implements DoCheck {
-    ngForOf: NgIterable<T>;
+    ngForOf: NgIterable<T> | undefined | null;
     ngForTemplate: TemplateRef<NgForOfContext<T>>;
     ngForTrackBy: TrackByFunction<T>;
     constructor(_viewContainer: ViewContainerRef, _template: TemplateRef<NgForOfContext<T>>, _differs: IterableDiffers);
@@ -309,6 +310,7 @@ export declare class NgStyleBase {
         [key: string]: any;
     } | null;
     static ngDirectiveDef: any;
+    static ngFactory: any;
 }
 
 export declare class NgSwitch {

@@ -14,7 +14,7 @@ import {LContext, MONKEY_PATCH_KEY_NAME} from './interfaces/context';
 import {TNode, TNodeFlags} from './interfaces/node';
 import {RElement, RNode} from './interfaces/renderer';
 import {CONTEXT, HEADER_OFFSET, HOST, LView, TVIEW} from './interfaces/view';
-import {getComponentViewByIndex, getNativeByTNode, readPatchedData, unwrapRNode} from './util/view_utils';
+import {getComponentViewByIndex, getNativeByTNodeOrNull, readPatchedData, unwrapRNode} from './util/view_utils';
 
 
 
@@ -191,7 +191,7 @@ export function isDirectiveInstance(instance: any): boolean {
 function findViaNativeElement(lView: LView, target: RElement): number {
   let tNode = lView[TVIEW].firstChild;
   while (tNode) {
-    const native = getNativeByTNode(tNode, lView) !;
+    const native = getNativeByTNodeOrNull(tNode, lView) !;
     if (native === target) {
       return tNode.index;
     }
@@ -282,14 +282,14 @@ export function getDirectivesAtNodeIndex(
   let directiveStartIndex = tNode.directiveStart;
   if (directiveStartIndex == 0) return EMPTY_ARRAY;
   const directiveEndIndex = tNode.directiveEnd;
-  if (!includeComponents && tNode.flags & TNodeFlags.isComponent) directiveStartIndex++;
+  if (!includeComponents && tNode.flags & TNodeFlags.isComponentHost) directiveStartIndex++;
   return lView.slice(directiveStartIndex, directiveEndIndex);
 }
 
 export function getComponentAtNodeIndex(nodeIndex: number, lView: LView): {}|null {
   const tNode = lView[TVIEW].data[nodeIndex] as TNode;
   let directiveStartIndex = tNode.directiveStart;
-  return tNode.flags & TNodeFlags.isComponent ? lView[directiveStartIndex] : null;
+  return tNode.flags & TNodeFlags.isComponentHost ? lView[directiveStartIndex] : null;
 }
 
 /**

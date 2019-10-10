@@ -49,6 +49,7 @@ export function getConstructorDependencies(
     let token = valueReferenceToExpression(param.typeValueReference, defaultImportRecorder);
     let optional = false, self = false, skipSelf = false, host = false;
     let resolved = R3ResolvedDependencyType.Token;
+
     (param.decorators || []).filter(dec => isCore || isAngularCore(dec)).forEach(dec => {
       const name = isCore || dec.import === null ? dec.name : dec.import !.name;
       if (name === 'Inject') {
@@ -79,6 +80,11 @@ export function getConstructorDependencies(
             ErrorCode.DECORATOR_UNEXPECTED, dec.node, `Unexpected decorator ${name} on parameter.`);
       }
     });
+
+    if (token instanceof ExternalExpr && token.value.name === 'ChangeDetectorRef' &&
+        token.value.moduleName === '@angular/core') {
+      resolved = R3ResolvedDependencyType.ChangeDetectorRef;
+    }
     if (token === null) {
       errors.push({
         index: idx,
@@ -311,17 +317,13 @@ export function readBaseClass(
     return reflector.hasBaseClass(node) ? 'dynamic' : null;
   }
 
-  if (node.heritageClauses !== undefined) {
-    for (const clause of node.heritageClauses) {
-      if (clause.token === ts.SyntaxKind.ExtendsKeyword) {
-        // The class has a base class. Figure out whether it's resolvable or not.
-        const baseClass = evaluator.evaluate(clause.types[0].expression);
-        if (baseClass instanceof Reference && isNamedClassDeclaration(baseClass.node)) {
-          return baseClass as Reference<ClassDeclaration>;
-        } else {
-          return 'dynamic';
-        }
-      }
+  const baseExpression = reflector.getBaseClassExpression(node);
+  if (baseExpression !== null) {
+    const baseClass = evaluator.evaluate(baseExpression);
+    if (baseClass instanceof Reference && isNamedClassDeclaration(baseClass.node)) {
+      return baseClass as Reference<ClassDeclaration>;
+    } else {
+      return 'dynamic';
     }
   }
 

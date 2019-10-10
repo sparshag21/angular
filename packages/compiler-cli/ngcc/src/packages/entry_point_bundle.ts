@@ -6,11 +6,10 @@
  * found in the LICENSE file at https://angular.io/license
  */
 import * as ts from 'typescript';
-import {AbsoluteFsPath, FileSystem, absoluteFrom, resolve} from '../../../src/ngtsc/file_system';
-import {NgtscCompilerHost} from '../../../src/ngtsc/file_system/src/compiler_host';
+import {AbsoluteFsPath, FileSystem, NgtscCompilerHost, absoluteFrom} from '../../../src/ngtsc/file_system';
 import {PathMappings} from '../utils';
 import {BundleProgram, makeBundleProgram} from './bundle_program';
-import {EntryPoint, EntryPointFormat, EntryPointJsonProperty} from './entry_point';
+import {EntryPoint, EntryPointFormat} from './entry_point';
 import {NgccSourcesCompilerHost} from './ngcc_compiler_host';
 
 /**
@@ -19,7 +18,6 @@ import {NgccSourcesCompilerHost} from './ngcc_compiler_host';
  */
 export interface EntryPointBundle {
   entryPoint: EntryPoint;
-  formatProperty: EntryPointJsonProperty;
   format: EntryPointFormat;
   isCore: boolean;
   isFlatCore: boolean;
@@ -30,17 +28,20 @@ export interface EntryPointBundle {
 
 /**
  * Get an object that describes a formatted bundle for an entry-point.
- * @param entryPointPath The path to the entry-point that contains the bundle.
+ * @param fs The current file-system being used.
+ * @param entryPoint The entry-point that contains the bundle.
  * @param formatPath The path to the source files for this bundle.
- * @param typingsPath The path to the typings files if we should transform them with this bundle.
  * @param isCore This entry point is the Angular core package.
  * @param format The underlying format of the bundle.
  * @param transformDts Whether to transform the typings along with this bundle.
+ * @param pathMappings An optional set of mappings to use when compiling files.
+ * @param mirrorDtsFromSrc If true then the `dts` program will contain additional files that
+ * were guessed by mapping the `src` files to `dts` files.
  */
 export function makeEntryPointBundle(
     fs: FileSystem, entryPoint: EntryPoint, formatPath: string, isCore: boolean,
-    formatProperty: EntryPointJsonProperty, format: EntryPointFormat, transformDts: boolean,
-    pathMappings?: PathMappings): EntryPointBundle|null {
+    format: EntryPointFormat, transformDts: boolean, pathMappings?: PathMappings,
+    mirrorDtsFromSrc: boolean = false): EntryPointBundle {
   // Create the TS program and necessary helpers.
   const options: ts.CompilerOptions = {
     allowJs: true,
@@ -53,13 +54,36 @@ export function makeEntryPointBundle(
   const rootDirs = [absoluteFrom(entryPoint.path)];
 
   // Create the bundle programs, as necessary.
+  const absFormatPath = fs.resolve(entryPoint.path, formatPath);
+  const typingsPath = fs.resolve(entryPoint.path, entryPoint.typings);
   const src = makeBundleProgram(
-      fs, isCore, resolve(entryPoint.path, formatPath), 'r3_symbols.js', options, srcHost);
+      fs, isCore, entryPoint.package, absFormatPath, 'r3_symbols.js', options, srcHost);
+  const additionalDtsFiles = transformDts && mirrorDtsFromSrc ?
+      computePotentialDtsFilesFromJsFiles(fs, src.program, absFormatPath, typingsPath) :
+      [];
   const dts = transformDts ? makeBundleProgram(
-                                 fs, isCore, resolve(entryPoint.path, entryPoint.typings),
-                                 'r3_symbols.d.ts', options, dtsHost) :
+                                 fs, isCore, entryPoint.package, typingsPath, 'r3_symbols.d.ts',
+                                 options, dtsHost, additionalDtsFiles) :
                              null;
   const isFlatCore = isCore && src.r3SymbolsFile === null;
 
-  return {entryPoint, format, formatProperty, rootDirs, isCore, isFlatCore, src, dts};
+  return {entryPoint, format, rootDirs, isCore, isFlatCore, src, dts};
+}
+
+function computePotentialDtsFilesFromJsFiles(
+    fs: FileSystem, srcProgram: ts.Program, formatPath: AbsoluteFsPath,
+    typingsPath: AbsoluteFsPath) {
+  const relativePath = fs.relative(fs.dirname(formatPath), fs.dirname(typingsPath));
+  const additionalFiles: AbsoluteFsPath[] = [];
+  for (const sf of srcProgram.getSourceFiles()) {
+    if (!sf.fileName.endsWith('.js')) {
+      continue;
+    }
+    const dtsPath = fs.resolve(
+        fs.dirname(sf.fileName), relativePath, fs.basename(sf.fileName, '.js') + '.d.ts');
+    if (fs.exists(dtsPath)) {
+      additionalFiles.push(dtsPath);
+    }
+  }
+  return additionalFiles;
 }

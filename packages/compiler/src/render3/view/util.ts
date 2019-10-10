@@ -7,6 +7,7 @@
  */
 
 import {ConstantPool} from '../../constant_pool';
+import {Interpolation} from '../../expression_parser/ast';
 import * as o from '../../output/output_ast';
 import {ParseSourceSpan} from '../../parse_util';
 import {splitAtColon} from '../../util';
@@ -61,14 +62,14 @@ export function temporaryAllocator(statements: o.Statement[], name: string): () 
 }
 
 
-export function unsupported(feature: string): never {
+export function unsupported(this: void|Function, feature: string): never {
   if (this) {
     throw new Error(`Builder ${this.constructor.name} doesn't support ${feature} yet`);
   }
   throw new Error(`Feature ${feature} is not supported yet`);
 }
 
-export function invalid<T>(arg: o.Expression | o.Statement | t.Node): never {
+export function invalid<T>(this: t.Visitor, arg: o.Expression | o.Statement | t.Node): never {
   throw new Error(
       `Invalid state: Visitor ${this.constructor.name} doesn't handle ${arg.constructor.name}`);
 }
@@ -200,4 +201,21 @@ export function chainedInstruction(
   }
 
   return expression;
+}
+
+/**
+ * Gets the number of arguments expected to be passed to a generated instruction in the case of
+ * interpolation instructions.
+ * @param interpolation An interpolation ast
+ */
+export function getInterpolationArgsLength(interpolation: Interpolation) {
+  const {expressions, strings} = interpolation;
+  if (expressions.length === 1 && strings.length === 2 && strings[0] === '' && strings[1] === '') {
+    // If the interpolation has one interpolated value, but the prefix and suffix are both empty
+    // strings, we only pass one argument, to a special instruction like `propertyInterpolate` or
+    // `textInterpolate`.
+    return 1;
+  } else {
+    return expressions.length + strings.length;
+  }
 }

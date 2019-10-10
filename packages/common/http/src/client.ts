@@ -20,6 +20,12 @@ import {HttpEvent, HttpResponse} from './response';
 /**
  * Constructs an instance of `HttpRequestOptions<T>` from a source `HttpMethodOptions` and
  * the given `body`. This function clones the object and adds the body.
+ *
+ * Note that the `responseType` *options* value is a String that identifies the
+ * single data type of the response.
+ * A single overload version of the method handles each response type.
+ * The value of `responseType` cannot be a union, as the combined signature could imply.
+ *
  */
 function addBody<T>(
     options: {
@@ -46,14 +52,15 @@ export type HttpObserve = 'body' | 'events' | 'response';
 
 /**
  * Performs HTTP requests.
- *
- * `HttpClient` is available as an injectable class, with methods to perform HTTP requests.
+ * This service is available as an injectable class, with methods to perform HTTP requests.
  * Each request method has multiple signatures, and the return type varies based on
  * the signature that is called (mainly the values of `observe` and `responseType`).
  *
- *
- * @see [HTTP Guide](guide/http)
- *
+ * Note that the `responseType` *options* value is a String that identifies the
+ * single data type of the response.
+ * A single overload version of the method handles each response type.
+ * The value of `responseType` cannot be a union, as the combined signature could imply.
+
  *
  * @usageNotes
  * Sample HTTP requests for the [Tour of Heroes](/tutorial/toh-pt0) application.
@@ -75,7 +82,6 @@ export type HttpObserve = 'body' | 'events' | 'response';
  * }
  * ```
  *
- *
  * ### PATCH Example
  * ```
  * // PATCH one of the heroes' name
@@ -84,7 +90,9 @@ export type HttpObserve = 'body' | 'events' | 'response';
  *  return this.httpClient.patch(url, {name: heroName}, httpOptions)
  *    .pipe(catchError(this.handleError('patchHero')));
  * }
-* ```
+ * ```
+ *
+ * @see [HTTP Guide](guide/http)
  *
  * @publicApi
  */

@@ -9,11 +9,10 @@ import * as ts from 'typescript';
 
 import {absoluteFrom, getFileSystem, getSourceFileOrError} from '../../../src/ngtsc/file_system';
 import {TestFile, runInEachFileSystem} from '../../../src/ngtsc/file_system/testing';
-import {ClassMemberKind, CtorParameter, Import, isNamedClassDeclaration, isNamedFunctionDeclaration, isNamedVariableDeclaration} from '../../../src/ngtsc/reflection';
+import {ClassMemberKind, CtorParameter, InlineDeclaration, isNamedClassDeclaration, isNamedFunctionDeclaration, isNamedVariableDeclaration} from '../../../src/ngtsc/reflection';
 import {getDeclaration} from '../../../src/ngtsc/testing';
 import {loadFakeCore, loadTestFiles} from '../../../test/helpers';
 import {CommonJsReflectionHost} from '../../src/host/commonjs_host';
-import {Esm2015ReflectionHost} from '../../src/host/esm2015_host';
 import {getIifeBody} from '../../src/host/esm5_host';
 import {MockLogger} from '../helpers/mock_logger';
 import {getRootFiles, makeTestBundleProgram, makeTestDtsBundleProgram} from '../helpers/utils';
@@ -31,6 +30,7 @@ runInEachFileSystem(() => {
     let SIMPLE_ES2015_CLASS_FILE: TestFile;
     let SIMPLE_CLASS_FILE: TestFile;
     let FOO_FUNCTION_FILE: TestFile;
+    let INLINE_EXPORT_FILE: TestFile;
     let INVALID_DECORATORS_FILE: TestFile;
     let INVALID_DECORATOR_ARGS_FILE: TestFile;
     let INVALID_PROP_DECORATORS_FILE: TestFile;
@@ -161,6 +161,18 @@ foo.decorators = [
   { type: core.Directive, args: [{ selector: '[ignored]' },] }
 ];
 exports.foo = foo;
+`,
+      };
+
+      INLINE_EXPORT_FILE = {
+        name: _('/inline_export.js'),
+        contents: `
+var core = require('@angular/core');
+function foo() {}
+foo.decorators = [
+  { type: core.Directive, args: [{ selector: '[ignored]' },] }
+];
+exports.directives = [foo];
 `,
       };
 
@@ -951,23 +963,6 @@ exports.ExternalModule = ExternalModule;
           expect(decorators[0]).toEqual(jasmine.objectContaining({name: 'Directive'}));
         });
 
-        it('should use `getImportOfIdentifier()` to retrieve import info', () => {
-          loadTestFiles([SOME_DIRECTIVE_FILE]);
-          const {program, host: compilerHost} = makeTestBundleProgram(SOME_DIRECTIVE_FILE.name);
-          const host = new CommonJsReflectionHost(new MockLogger(), false, program, compilerHost);
-          const mockImportInfo: Import = {from: '@angular/core', name: 'Directive'};
-          const spy = spyOn(host, 'getImportOfIdentifier').and.returnValue(mockImportInfo);
-          const classNode = getDeclaration(
-              program, SOME_DIRECTIVE_FILE.name, 'SomeDirective', isNamedVariableDeclaration);
-          const decorators = host.getDecoratorsOfDeclaration(classNode) !;
-
-          expect(decorators.length).toEqual(1);
-          expect(decorators[0].import).toBe(mockImportInfo);
-
-          const typeIdentifier = spy.calls.mostRecent().args[0] as ts.Identifier;
-          expect(typeIdentifier.text).toBe('Directive');
-        });
-
         describe('(returned decorators `args`)', () => {
           it('should be an empty array if decorator has no `args` property', () => {
             loadTestFiles([INVALID_DECORATOR_ARGS_FILE]);
@@ -1185,22 +1180,17 @@ exports.ExternalModule = ExternalModule;
           expect(decorators[0]).toEqual(jasmine.objectContaining({name: 'Directive'}));
         });
 
-        it('should use `getImportOfIdentifier()` to retrieve import info', () => {
+        it('should have import information on decorators', () => {
           loadTestFiles([SOME_DIRECTIVE_FILE]);
           const {program, host: compilerHost} = makeTestBundleProgram(SOME_DIRECTIVE_FILE.name);
           const host = new CommonJsReflectionHost(new MockLogger(), false, program, compilerHost);
-          const mockImportInfo = { name: 'mock', from: '@angular/core' } as Import;
-          const spy = spyOn(host, 'getImportOfIdentifier').and.returnValue(mockImportInfo);
 
           const classNode = getDeclaration(
               program, SOME_DIRECTIVE_FILE.name, 'SomeDirective', isNamedVariableDeclaration);
           const decorators = host.getDecoratorsOfDeclaration(classNode) !;
 
           expect(decorators.length).toEqual(1);
-          expect(decorators[0].import).toBe(mockImportInfo);
-
-          const typeIdentifier = spy.calls.mostRecent().args[0] as ts.Identifier;
-          expect(typeIdentifier.text).toBe('Directive');
+          expect(decorators[0].import).toEqual({name: 'Directive', from: '@angular/core'});
         });
 
         describe('(returned prop decorators `args`)', () => {
@@ -1430,24 +1420,19 @@ exports.ExternalModule = ExternalModule;
                expect(decorators[0]).toEqual(jasmine.objectContaining({name: 'Inject'}));
              });
 
-          it('should use `getImportOfIdentifier()` to retrieve import info', () => {
+          it('should have import information on decorators', () => {
             loadTestFiles([SOME_DIRECTIVE_FILE]);
             const {program, host: compilerHost} = makeTestBundleProgram(SOME_DIRECTIVE_FILE.name);
             const host = new CommonJsReflectionHost(new MockLogger(), false, program, compilerHost);
             const classNode = getDeclaration(
                 program, SOME_DIRECTIVE_FILE.name, 'SomeDirective', isNamedVariableDeclaration);
-            const mockImportInfo: Import = {from: '@angular/core', name: 'Directive'};
-            const spy = spyOn(CommonJsReflectionHost.prototype, 'getImportOfIdentifier')
-                            .and.returnValue(mockImportInfo);
 
             const parameters = host.getConstructorParameters(classNode);
             const decorators = parameters ![2].decorators !;
 
             expect(decorators.length).toEqual(1);
-            expect(decorators[0].import).toBe(mockImportInfo);
-
-            const typeIdentifier = spy.calls.mostRecent().args[0] as ts.Identifier;
-            expect(typeIdentifier.text).toBe('Inject');
+            expect(decorators[0].name).toBe('Inject');
+            expect(decorators[0].import).toEqual({name: 'Inject', from: '@angular/core'});
           });
         });
 
@@ -1573,6 +1558,30 @@ exports.ExternalModule = ExternalModule;
           expect(importOfIdent).toEqual({name: 'a', from: './file_a'});
         });
 
+        it('should find the import of an identifier in a declaration file', () => {
+          loadTestFiles([
+            {
+              name: _('/index.d.ts'),
+              contents: `
+                import {MyClass} from './myclass.d.ts';
+                export declare const a: MyClass;`
+            },
+            {
+              name: _('/myclass.d.ts'),
+              contents: `export declare class MyClass {}`,
+            }
+          ]);
+          const {program, host: compilerHost} = makeTestBundleProgram(_('/index.d.ts'));
+          const host = new CommonJsReflectionHost(new MockLogger(), false, program, compilerHost);
+          const variableNode =
+              getDeclaration(program, _('/index.d.ts'), 'a', isNamedVariableDeclaration);
+          const identifier =
+              ((variableNode.type as ts.TypeReferenceNode).typeName as ts.Identifier);
+
+          const importOfIdent = host.getImportOfIdentifier(identifier !);
+          expect(importOfIdent).toEqual({name: 'MyClass', from: './myclass.d.ts'});
+        });
+
         it('should return null if the identifier was not imported', () => {
           loadTestFiles(IMPORTS_FILES);
           const {program, host: compilerHost} = makeTestBundleProgram(_('/index.js'));
@@ -1656,7 +1665,7 @@ exports.ExternalModule = ExternalModule;
           const exportDeclarations = host.getExportsOfModule(file);
           expect(exportDeclarations).not.toBe(null);
           expect(Array.from(exportDeclarations !.entries())
-                     .map(entry => [entry[0], entry[1].node.getText(), entry[1].viaModule]))
+                     .map(entry => [entry[0], entry[1].node !.getText(), entry[1].viaModule]))
               .toEqual([
                 ['Directive', `Directive: FnWithArg<(clazz: any) => any>`, '@angular/core'],
                 ['a', `a = 'a'`, './a_module'],
@@ -1682,7 +1691,7 @@ exports.ExternalModule = ExternalModule;
           const exportDeclarations = host.getExportsOfModule(file);
           expect(exportDeclarations).not.toBe(null);
           expect(Array.from(exportDeclarations !.entries())
-                     .map(entry => [entry[0], entry[1].node.getText(), entry[1].viaModule]))
+                     .map(entry => [entry[0], entry[1].node !.getText(), entry[1].viaModule]))
               .toEqual([
                 ['Directive', `Directive: FnWithArg<(clazz: any) => any>`, _('/b_module')],
                 ['a', `a = 'a'`, _('/b_module')],
@@ -1700,6 +1709,19 @@ exports.ExternalModule = ExternalModule;
                 ['xtra2', `xtra2 = 'xtra2'`, _('/xtra_module')],
               ]);
         });
+
+        it('should handle inline exports', () => {
+          loadTestFiles([INLINE_EXPORT_FILE]);
+          const {program, host: compilerHost} = makeTestBundleProgram(_('/inline_export.js'));
+          const host = new CommonJsReflectionHost(new MockLogger(), false, program, compilerHost);
+          const file = getSourceFileOrError(program, _('/inline_export.js'));
+          const exportDeclarations = host.getExportsOfModule(file);
+          expect(exportDeclarations).not.toBeNull();
+          const decl = exportDeclarations !.get('directives') as InlineDeclaration;
+          expect(decl).not.toBeUndefined();
+          expect(decl.node).toBeNull();
+          expect(decl.expression).toBeDefined();
+        });
       });
 
       describe('getClassSymbol()', () => {
@@ -1713,19 +1735,22 @@ exports.ExternalModule = ExternalModule;
           const classSymbol = host.getClassSymbol(node);
 
           expect(classSymbol).toBeDefined();
-          expect(classSymbol !.valueDeclaration).toBe(node);
+          expect(classSymbol !.declaration.valueDeclaration).toBe(node);
+          expect(classSymbol !.implementation.valueDeclaration).toBe(node);
         });
 
         it('should return the class symbol for an ES5 class (outer variable declaration)', () => {
           loadTestFiles([SIMPLE_CLASS_FILE]);
           const {program, host: compilerHost} = makeTestBundleProgram(SIMPLE_CLASS_FILE.name);
           const host = new CommonJsReflectionHost(new MockLogger(), false, program, compilerHost);
-          const node = getDeclaration(
+          const outerNode = getDeclaration(
               program, SIMPLE_CLASS_FILE.name, 'EmptyClass', isNamedVariableDeclaration);
-          const classSymbol = host.getClassSymbol(node);
+          const innerNode = getIifeBody(outerNode) !.statements.find(isNamedFunctionDeclaration) !;
+          const classSymbol = host.getClassSymbol(outerNode);
 
           expect(classSymbol).toBeDefined();
-          expect(classSymbol !.valueDeclaration).toBe(node);
+          expect(classSymbol !.declaration.valueDeclaration).toBe(outerNode);
+          expect(classSymbol !.implementation.valueDeclaration).toBe(innerNode);
         });
 
         it('should return the class symbol for an ES5 class (inner function declaration)', () => {
@@ -1738,7 +1763,8 @@ exports.ExternalModule = ExternalModule;
           const classSymbol = host.getClassSymbol(innerNode);
 
           expect(classSymbol).toBeDefined();
-          expect(classSymbol !.valueDeclaration).toBe(outerNode);
+          expect(classSymbol !.declaration.valueDeclaration).toBe(outerNode);
+          expect(classSymbol !.implementation.valueDeclaration).toBe(innerNode);
         });
 
         it('should return the same class symbol (of the outer declaration) for outer and inner declarations',
@@ -1752,7 +1778,10 @@ exports.ExternalModule = ExternalModule;
              const innerNode =
                  getIifeBody(outerNode) !.statements.find(isNamedFunctionDeclaration) !;
 
-             expect(host.getClassSymbol(innerNode)).toBe(host.getClassSymbol(outerNode));
+             const innerSymbol = host.getClassSymbol(innerNode) !;
+             const outerSymbol = host.getClassSymbol(outerNode) !;
+             expect(innerSymbol.declaration).toBe(outerSymbol.declaration);
+             expect(innerSymbol.implementation).toBe(outerSymbol.implementation);
            });
 
         it('should return undefined if node is not an ES5 class', () => {
@@ -1765,46 +1794,67 @@ exports.ExternalModule = ExternalModule;
 
           expect(classSymbol).toBeUndefined();
         });
+
+        it('should return undefined if variable declaration is not initialized using an IIFE',
+           () => {
+             const testFile = {
+               name: _('/test.js'),
+               contents: `var MyClass = null;`,
+             };
+             loadTestFiles([testFile]);
+             const {program, host: compilerHost} = makeTestBundleProgram(testFile.name);
+             const host =
+                 new CommonJsReflectionHost(new MockLogger(), false, program, compilerHost);
+             const node =
+                 getDeclaration(program, testFile.name, 'MyClass', isNamedVariableDeclaration);
+             const classSymbol = host.getClassSymbol(node);
+
+             expect(classSymbol).toBeUndefined();
+           });
       });
 
       describe('isClass()', () => {
-        let host: CommonJsReflectionHost;
-        let mockNode: ts.Node;
-        let getClassDeclarationSpy: jasmine.Spy;
-        let superGetClassDeclarationSpy: jasmine.Spy;
-
-        beforeEach(() => {
-          loadTestFiles([SIMPLE_CLASS_FILE]);
-          const {program, host: compilerHost} = makeTestBundleProgram(SIMPLE_CLASS_FILE.name);
-          host = new CommonJsReflectionHost(new MockLogger(), false, program, compilerHost);
-          mockNode = {} as any;
-
-          getClassDeclarationSpy = spyOn(CommonJsReflectionHost.prototype, 'getClassDeclaration');
-          superGetClassDeclarationSpy =
-              spyOn(Esm2015ReflectionHost.prototype, 'getClassDeclaration');
+        it('should return true if a given node is a TS class declaration', () => {
+          loadTestFiles([SIMPLE_ES2015_CLASS_FILE]);
+          const {program, host: compilerHost} =
+              makeTestBundleProgram(SIMPLE_ES2015_CLASS_FILE.name);
+          const host = new CommonJsReflectionHost(new MockLogger(), false, program, compilerHost);
+          const node = getDeclaration(
+              program, SIMPLE_ES2015_CLASS_FILE.name, 'EmptyClass', isNamedClassDeclaration);
+          expect(host.isClass(node)).toBe(true);
         });
 
-        it('should return true if superclass returns true', () => {
-          superGetClassDeclarationSpy.and.returnValue(true);
-          getClassDeclarationSpy.and.callThrough();
+        it('should return true if a given node is the outer variable declaration of a class',
+           () => {
+             loadTestFiles([SIMPLE_CLASS_FILE]);
+             const {program, host: compilerHost} = makeTestBundleProgram(SIMPLE_CLASS_FILE.name);
+             const host =
+                 new CommonJsReflectionHost(new MockLogger(), false, program, compilerHost);
+             const node = getDeclaration(
+                 program, SIMPLE_CLASS_FILE.name, 'EmptyClass', ts.isVariableDeclaration);
+             expect(host.isClass(node)).toBe(true);
+           });
 
-          expect(host.isClass(mockNode)).toBe(true);
-          expect(getClassDeclarationSpy).toHaveBeenCalledWith(mockNode);
-          expect(superGetClassDeclarationSpy).toHaveBeenCalledWith(mockNode);
-        });
+        it('should return true if a given node is the inner variable declaration of a class',
+           () => {
+             loadTestFiles([SIMPLE_CLASS_FILE]);
+             const {program, host: compilerHost} = makeTestBundleProgram(SIMPLE_CLASS_FILE.name);
+             const host =
+                 new CommonJsReflectionHost(new MockLogger(), false, program, compilerHost);
+             const outerNode = getDeclaration(
+                 program, SIMPLE_CLASS_FILE.name, 'EmptyClass', ts.isVariableDeclaration);
+             const innerNode =
+                 getIifeBody(outerNode) !.statements.find(isNamedFunctionDeclaration) !;
+             expect(host.isClass(innerNode)).toBe(true);
+           });
 
-        it('should return true if it can find a declaration for the class', () => {
-          getClassDeclarationSpy.and.returnValue(true);
-
-          expect(host.isClass(mockNode)).toBe(true);
-          expect(getClassDeclarationSpy).toHaveBeenCalledWith(mockNode);
-        });
-
-        it('should return false if it cannot find a declaration for the class', () => {
-          getClassDeclarationSpy.and.returnValue(false);
-
-          expect(host.isClass(mockNode)).toBe(false);
-          expect(getClassDeclarationSpy).toHaveBeenCalledWith(mockNode);
+        it('should return false if a given node is a function declaration', () => {
+          loadTestFiles([FOO_FUNCTION_FILE]);
+          const {program, host: compilerHost} = makeTestBundleProgram(FOO_FUNCTION_FILE.name);
+          const host = new CommonJsReflectionHost(new MockLogger(), false, program, compilerHost);
+          const node =
+              getDeclaration(program, FOO_FUNCTION_FILE.name, 'foo', isNamedFunctionDeclaration);
+          expect(host.isClass(node)).toBe(false);
         });
       });
 
@@ -1852,6 +1902,95 @@ exports.ExternalModule = ExternalModule;
           return TestClass;
         }(null));`);
           expect(result).toBe(false);
+        });
+      });
+
+      describe('getBaseClassExpression()', () => {
+        function getBaseClassIdentifier(source: string): ts.Identifier|null {
+          const file = {
+            name: _('/synthesized_constructors.js'),
+            contents: source,
+          };
+
+          loadTestFiles([file]);
+          const {program, host: compilerHost} = makeTestBundleProgram(file.name);
+          const host = new CommonJsReflectionHost(new MockLogger(), false, program, compilerHost);
+          const classNode =
+              getDeclaration(program, file.name, 'TestClass', isNamedVariableDeclaration);
+          const expression = host.getBaseClassExpression(classNode);
+          if (expression !== null && !ts.isIdentifier(expression)) {
+            throw new Error(
+                'Expected class to inherit via an identifier but got: ' + expression.getText());
+          }
+          return expression;
+        }
+
+        it('should find the base class of an IIFE with _super parameter', () => {
+          const identifier = getBaseClassIdentifier(`
+          var BaseClass = /** @class */ (function () {
+            function BaseClass() {}
+            return BaseClass;
+          }());
+          var TestClass = /** @class */ (function (_super) {
+            __extends(TestClass, _super);
+            function TestClass() {}
+            return TestClass;
+          }(BaseClass));`);
+          expect(identifier !.text).toBe('BaseClass');
+        });
+
+        it('should find the base class of an IIFE with a unique name generated for the _super parameter',
+           () => {
+             const identifier = getBaseClassIdentifier(`
+          var BaseClass = /** @class */ (function () {
+            function BaseClass() {}
+            return BaseClass;
+          }());
+          var TestClass = /** @class */ (function (_super_1) {
+            __extends(TestClass, _super_1);
+            function TestClass() {}
+            return TestClass;
+          }(BaseClass));`);
+             expect(identifier !.text).toBe('BaseClass');
+           });
+
+        it('should not find a base class for an IIFE without parameter', () => {
+          const identifier = getBaseClassIdentifier(`
+          var BaseClass = /** @class */ (function () {
+            function BaseClass() {}
+            return BaseClass;
+          }());
+          var TestClass = /** @class */ (function () {
+            __extends(TestClass, _super);
+            function TestClass() {}
+            return TestClass;
+          }(BaseClass));`);
+          expect(identifier).toBe(null);
+        });
+
+        it('should find a dynamic base class expression of an IIFE', () => {
+          const file = {
+            name: _('/synthesized_constructors.js'),
+            contents: `
+            var BaseClass = /** @class */ (function () {
+              function BaseClass() {}
+              return BaseClass;
+            }());
+            function foo() { return BaseClass; }
+            var TestClass = /** @class */ (function (_super) {
+              __extends(TestClass, _super);
+              function TestClass() {}
+              return TestClass;
+            }(foo()));`,
+          };
+
+          loadTestFiles([file]);
+          const {program, host: compilerHost} = makeTestBundleProgram(file.name);
+          const host = new CommonJsReflectionHost(new MockLogger(), false, program, compilerHost);
+          const classNode =
+              getDeclaration(program, file.name, 'TestClass', isNamedVariableDeclaration);
+          const expression = host.getBaseClassExpression(classNode) !;
+          expect(expression.getText()).toBe('foo()');
         });
       });
 
@@ -1904,7 +2043,7 @@ exports.ExternalModule = ExternalModule;
              loadTestFiles(TYPINGS_SRC_FILES);
              loadTestFiles(TYPINGS_DTS_FILES);
              const {program, host: compilerHost} = makeTestBundleProgram(_('/src/index.js'));
-             const dts = makeTestDtsBundleProgram(_('/typings/index.d.ts'));
+             const dts = makeTestDtsBundleProgram(_('/typings/index.d.ts'), _('/'));
              const class1 =
                  getDeclaration(program, _('/src/class1.js'), 'Class1', ts.isVariableDeclaration);
              const host =
@@ -1918,7 +2057,7 @@ exports.ExternalModule = ExternalModule;
           loadTestFiles(TYPINGS_SRC_FILES);
           loadTestFiles(TYPINGS_DTS_FILES);
           const {program, host: compilerHost} = makeTestBundleProgram(_('/src/index.js'));
-          const dts = makeTestDtsBundleProgram(_('/typings/index.d.ts'));
+          const dts = makeTestDtsBundleProgram(_('/typings/index.d.ts'), _('/'));
           const mooFn =
               getDeclaration(program, _('/src/func1.js'), 'mooFn', ts.isFunctionDeclaration);
           const host =
@@ -1931,7 +2070,7 @@ exports.ExternalModule = ExternalModule;
           loadTestFiles(TYPINGS_SRC_FILES);
           loadTestFiles(TYPINGS_DTS_FILES);
           const {program, host: compilerHost} = makeTestBundleProgram(_('/src/index.js'));
-          const dts = makeTestDtsBundleProgram(_('/typings/index.d.ts'));
+          const dts = makeTestDtsBundleProgram(_('/typings/index.d.ts'), _('/'));
           const missingClass = getDeclaration(
               program, _('/src/class1.js'), 'MissingClass1', ts.isVariableDeclaration);
           const host =
@@ -1944,7 +2083,7 @@ exports.ExternalModule = ExternalModule;
           loadTestFiles(TYPINGS_SRC_FILES);
           loadTestFiles(TYPINGS_DTS_FILES);
           const {program, host: compilerHost} = makeTestBundleProgram(_('/src/index.js'));
-          const dts = makeTestDtsBundleProgram(_('/typings/index.d.ts'));
+          const dts = makeTestDtsBundleProgram(_('/typings/index.d.ts'), _('/'));
           const missingClass = getDeclaration(
               program, _('/src/missing-class.js'), 'MissingClass2', ts.isVariableDeclaration);
           const host =
@@ -1958,7 +2097,7 @@ exports.ExternalModule = ExternalModule;
              loadTestFiles(TYPINGS_SRC_FILES);
              loadTestFiles(TYPINGS_DTS_FILES);
              const {program, host: compilerHost} = makeTestBundleProgram(_('/src/index.js'));
-             const dts = makeTestDtsBundleProgram(_('/typings/index.d.ts'));
+             const dts = makeTestDtsBundleProgram(_('/typings/index.d.ts'), _('/'));
              const class1 = getDeclaration(
                  program, _('/src/flat-file.js'), 'Class1', ts.isVariableDeclaration);
              const host =
@@ -1972,7 +2111,7 @@ exports.ExternalModule = ExternalModule;
           loadTestFiles(TYPINGS_SRC_FILES);
           loadTestFiles(TYPINGS_DTS_FILES);
           const {program, host: compilerHost} = makeTestBundleProgram(_('/src/index.js'));
-          const dts = makeTestDtsBundleProgram(_('/typings/index.d.ts'));
+          const dts = makeTestDtsBundleProgram(_('/typings/index.d.ts'), _('/'));
           const class3 =
               getDeclaration(program, _('/src/flat-file.js'), 'Class3', ts.isVariableDeclaration);
           const host =
@@ -1987,7 +2126,7 @@ exports.ExternalModule = ExternalModule;
              loadTestFiles(TYPINGS_SRC_FILES);
              loadTestFiles(TYPINGS_DTS_FILES);
              const {program, host: compilerHost} = makeTestBundleProgram(_('/src/index.js'));
-             const dts = makeTestDtsBundleProgram(_('/typings/index.d.ts'));
+             const dts = makeTestDtsBundleProgram(_('/typings/index.d.ts'), _('/'));
              const internalClass = getDeclaration(
                  program, _('/src/internal.js'), 'InternalClass', ts.isVariableDeclaration);
              const host =
@@ -2002,7 +2141,7 @@ exports.ExternalModule = ExternalModule;
              loadTestFiles(TYPINGS_SRC_FILES);
              loadTestFiles(TYPINGS_DTS_FILES);
              const {program, host: compilerHost} = makeTestBundleProgram(_('/src/index.js'));
-             const dts = makeTestDtsBundleProgram(_('/typings/index.d.ts'));
+             const dts = makeTestDtsBundleProgram(_('/typings/index.d.ts'), _('/'));
              const class2 =
                  getDeclaration(program, _('/src/class2.js'), 'Class2', ts.isVariableDeclaration);
              const internalClass2 =

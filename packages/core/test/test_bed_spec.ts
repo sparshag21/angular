@@ -6,7 +6,9 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {Component, Directive, ErrorHandler, Inject, Injectable, InjectionToken, Input, NgModule, Optional, Pipe, ɵsetClassMetadata as setClassMetadata, ɵɵdefineComponent as defineComponent, ɵɵdefineNgModule as defineNgModule, ɵɵtext as text} from '@angular/core';
+import {Compiler, Component, Directive, ErrorHandler, Inject, Injectable, InjectionToken, Input, ModuleWithProviders, NgModule, Optional, Pipe, getModuleFactory, ɵsetClassMetadata as setClassMetadata, ɵɵdefineComponent as defineComponent, ɵɵdefineNgModule as defineNgModule, ɵɵtext as text} from '@angular/core';
+import {registerModuleFactory} from '@angular/core/src/linker/ng_module_factory_registration';
+import {NgModuleFactory} from '@angular/core/src/render3';
 import {TestBed, getTestBed} from '@angular/core/testing/src/test_bed';
 import {By} from '@angular/platform-browser';
 import {expect} from '@angular/platform-browser/testing/src/matchers';
@@ -229,6 +231,64 @@ describe('TestBed', () => {
     expect(hello.nativeElement).toHaveText('Hello injected World !');
   });
 
+  it('should allow overriding a provider defined via ModuleWithProviders (using TestBed.overrideProvider)',
+     () => {
+       const serviceOverride = {
+         get() { return 'override'; },
+       };
+
+       @Injectable({providedIn: 'root'})
+       class MyService {
+         get() { return 'original'; }
+       }
+
+       @NgModule({})
+       class MyModule {
+         static forRoot(): ModuleWithProviders<MyModule> {
+           return {
+             ngModule: MyModule,
+             providers: [MyService],
+           };
+         }
+       }
+       TestBed.overrideProvider(MyService, {useValue: serviceOverride});
+       TestBed.configureTestingModule({
+         imports: [MyModule.forRoot()],
+       });
+
+       const service = TestBed.inject(MyService);
+       expect(service.get()).toEqual('override');
+     });
+
+  it('should allow overriding a provider defined via ModuleWithProviders (using TestBed.configureTestingModule)',
+     () => {
+       const serviceOverride = {
+         get() { return 'override'; },
+       };
+
+       @Injectable({providedIn: 'root'})
+       class MyService {
+         get() { return 'original'; }
+       }
+
+       @NgModule({})
+       class MyModule {
+         static forRoot(): ModuleWithProviders<MyModule> {
+           return {
+             ngModule: MyModule,
+             providers: [MyService],
+           };
+         }
+       }
+       TestBed.configureTestingModule({
+         imports: [MyModule.forRoot()],
+         providers: [{provide: MyService, useValue: serviceOverride}],
+       });
+
+       const service = TestBed.inject(MyService);
+       expect(service.get()).toEqual('override');
+     });
+
   it('allow to override multi provider', () => {
     const MY_TOKEN = new InjectionToken('MyProvider');
     class MyProvider {}
@@ -323,7 +383,7 @@ describe('TestBed', () => {
     getTestBed().resetTestingModule();
     TestBed.configureTestingModule({imports: [ProvidesErrorHandler, HelloWorldModule]});
 
-    expect(TestBed.get(ErrorHandler)).toEqual(jasmine.any(CustomErrorHandler));
+    expect(TestBed.inject(ErrorHandler)).toEqual(jasmine.any(CustomErrorHandler));
 
   });
 
@@ -445,11 +505,11 @@ describe('TestBed', () => {
          */
         const getAOTCompiledComponent = () => {
           class ComponentClass {
+            static ngFactoryDef = () => new ComponentClass();
             static ngComponentDef = defineComponent({
               type: ComponentClass,
               selectors: [['comp']],
-              factory: () => new ComponentClass(),
-              consts: 1,
+              decls: 1,
               vars: 0,
               template: (rf: any, ctx: any) => {
                 if (rf & 1) {
@@ -633,13 +693,71 @@ describe('TestBed', () => {
              TestBed.configureTestingModule({imports: [Module, Module]});
              TestBed.overrideProvider(Token, {useValue: {name: 'fake'}});
 
-             expect(TestBed.get(Token).name).toEqual('fake');
+             expect(TestBed.inject(Token).name).toEqual('fake');
 
              TestBed.resetTestingModule();
 
              // The providers for the module should have been restored to the original array, with
              // no trace of the overridden providers.
              expect((Module as any).ngInjectorDef.providers).toEqual([Token]);
+           });
+
+        it('should clean up overridden providers on components whose modules are compiled more than once',
+           async() => {
+             @Injectable()
+             class SomeInjectable {
+               id: string|undefined;
+             }
+
+             @Component({providers: [SomeInjectable]})
+             class ComponentWithProvider {
+               constructor(readonly injectable: SomeInjectable) {}
+             }
+
+             @NgModule({declarations: [ComponentWithProvider]})
+             class MyModule {
+             }
+
+             TestBed.configureTestingModule({imports: [MyModule]});
+             const originalResolver =
+                 (ComponentWithProvider as any).ngComponentDef.providersResolver;
+             TestBed.overrideProvider(SomeInjectable, {useValue: {id: 'fake'}});
+
+             const compiler = TestBed.inject(Compiler);
+             await compiler.compileModuleAsync(MyModule);
+             compiler.compileModuleSync(MyModule);
+
+             TestBed.resetTestingModule();
+             expect((ComponentWithProvider as any).ngComponentDef.providersResolver)
+                 .toEqual(originalResolver);
+           });
+      });
+
+  onlyInIvy('Ivy module registration happens when NgModuleFactory is created')
+      .describe('cleans up registered modules - ', () => {
+        it('removes modules registered with TestBed', async() => {
+          @NgModule({id: 'my_module'})
+          class MyModule {
+          }
+
+          expect(() => getModuleFactory('my_module')).toThrowError();
+          await TestBed.inject(Compiler).compileModuleAsync(MyModule);
+          expect(() => getModuleFactory('my_module')).not.toThrowError();
+          TestBed.resetTestingModule();
+          expect(() => getModuleFactory('my_module')).toThrowError();
+        });
+
+        it('does not remove modules registered outside TestBed (i.e., side effect registration in ngfactory files)',
+           () => {
+             @NgModule({id: 'auto_module'})
+             class AutoModule {
+             }
+
+             expect(() => getModuleFactory('auto_module')).toThrowError();
+             registerModuleFactory('auto_module', new NgModuleFactory(AutoModule));
+             expect(() => getModuleFactory('auto_module')).not.toThrowError();
+             TestBed.resetTestingModule();
+             expect(() => getModuleFactory('auto_module')).not.toThrowError();
            });
       });
 });

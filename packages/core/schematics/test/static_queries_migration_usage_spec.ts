@@ -34,7 +34,7 @@ describe('static-queries migration with usage strategy', () => {
     writeFile('/tsconfig.json', JSON.stringify({
       compilerOptions: {
         lib: ['es2015'],
-      }
+      },
     }));
     writeFile('/angular.json', JSON.stringify({
       projects: {t: {architect: {build: {options: {tsConfig: './tsconfig.json'}}}}}

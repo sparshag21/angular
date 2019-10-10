@@ -6,7 +6,8 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {CustomTransformers, Program} from '@angular/compiler-cli';
+import {CustomTransformers, Program, defaultGatherDiagnostics} from '@angular/compiler-cli';
+import * as api from '@angular/compiler-cli/src/transformers/api';
 import * as ts from 'typescript';
 
 import {createCompilerHost, createProgram} from '../../ngtools2';
@@ -26,7 +27,7 @@ import {setWrapHostForTest} from '../../src/transformers/compiler_host';
 export class NgtscTestEnvironment {
   private multiCompileHostExt: MultiCompileHostExt|null = null;
   private oldProgram: Program|null = null;
-  private changedResources: Set<string>|undefined = undefined;
+  private changedResources: Set<string>|null = null;
 
   private constructor(
       private fs: FileSystem, readonly outDir: AbsoluteFsPath, readonly basePath: AbsoluteFsPath) {}
@@ -99,6 +100,15 @@ export class NgtscTestEnvironment {
     setWrapHostForTest(makeWrapHost(this.multiCompileHostExt));
   }
 
+  /**
+   * Installs a compiler host that allows for asynchronous reading of resources by implementing the
+   * `CompilerHost.readResource` method. Note that only asynchronous compilations are affected, as
+   * synchronous compilations do not use the asynchronous resource loader.
+   */
+  enablePreloading(): void {
+    setWrapHostForTest(makeWrapHost(new ResourceLoadingCompileHost(this.fs)));
+  }
+
   flushWrittenFileTracking(): void {
     if (this.multiCompileHostExt === null) {
       throw new Error(`Not tracking written files - call enableMultipleCompilations()`);
@@ -106,6 +116,12 @@ export class NgtscTestEnvironment {
     this.changedResources !.clear();
     this.multiCompileHostExt.flushWrittenFileTracking();
   }
+
+  /**
+   * Older versions of the CLI do not provide the `CompilerHost.getModifiedResourceFiles()` method.
+   * This results in the `changedResources` set being `null`.
+   */
+  simulateLegacyCLICompilerHost() { this.changedResources = null; }
 
   getFilesWrittenSinceLastFlush(): Set<string> {
     if (this.multiCompileHostExt === null) {
@@ -138,7 +154,8 @@ export class NgtscTestEnvironment {
     this.multiCompileHostExt.invalidate(absFilePath);
   }
 
-  tsconfig(extraOpts: {[key: string]: string | boolean} = {}, extraRootDirs?: string[]): void {
+  tsconfig(extraOpts: {[key: string]: string | boolean | null} = {}, extraRootDirs?: string[]):
+      void {
     const tsconfig: {[key: string]: any} = {
       extends: './tsconfig-base.json',
       angularCompilerOptions: {...extraOpts, enableIvy: true},
@@ -180,8 +197,18 @@ export class NgtscTestEnvironment {
    * Run the compiler to completion, and return any `ts.Diagnostic` errors that may have occurred.
    */
   driveDiagnostics(): ReadonlyArray<ts.Diagnostic> {
-    // Cast is safe as ngtsc mode only produces ts.Diagnostics.
-    return mainDiagnosticsForTest(['-p', this.basePath]) as ReadonlyArray<ts.Diagnostic>;
+    // ngtsc only produces ts.Diagnostic messages.
+    return mainDiagnosticsForTest(['-p', this.basePath]) as ts.Diagnostic[];
+  }
+
+  async driveDiagnosticsAsync(): Promise<ReadonlyArray<ts.Diagnostic>> {
+    const {rootNames, options} = readNgcCommandLineAndConfiguration(['-p', this.basePath]);
+    const host = createCompilerHost({options});
+    const program = createProgram({rootNames, host, options});
+    await program.loadNgStructureAsync();
+
+    // ngtsc only produces ts.Diagnostic messages.
+    return defaultGatherDiagnostics(program as api.Program) as ts.Diagnostic[];
   }
 
   driveRoutes(entryPoint?: string): LazyRoute[] {
@@ -241,6 +268,16 @@ class MultiCompileHostExt extends AugmentedCompilerHost implements Partial<ts.Co
   getFilesWrittenSinceLastFlush(): Set<string> { return this.writtenFiles; }
 
   invalidate(fileName: string): void { this.cache.delete(fileName); }
+}
+
+class ResourceLoadingCompileHost extends AugmentedCompilerHost implements api.CompilerHost {
+  readResource(fileName: string): Promise<string>|string {
+    const resource = this.readFile(fileName);
+    if (resource === undefined) {
+      throw new Error(`Resource ${fileName} not found`);
+    }
+    return resource;
+  }
 }
 
 function makeWrapHost(wrapped: AugmentedCompilerHost): (host: ts.CompilerHost) => ts.CompilerHost {

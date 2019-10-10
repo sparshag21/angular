@@ -10,9 +10,14 @@ import {assertDefined, assertEqual, throwError} from '../util/assert';
 
 import {getComponentDef, getNgModuleDef} from './definition';
 import {TNode} from './interfaces/node';
-import {LView} from './interfaces/view';
-import {isLContainer, isLView} from './util/view_utils';
+import {isLContainer, isLView} from './interfaces/type_checks';
+import {LView, TVIEW, TView} from './interfaces/view';
 
+export function assertTNodeForLView(tNode: TNode, lView: LView) {
+  tNode.hasOwnProperty('tView_') && assertEqual(
+                                        (tNode as any as{tView_: TView}).tView_, lView[TVIEW],
+                                        'This TNode does not belong to this LView.');
+}
 
 export function assertComponentType(
     actual: any,
@@ -63,4 +68,9 @@ export function assertLViewOrUndefined(value: any): void {
 export function assertLView(value: any) {
   assertDefined(value, 'LView must be defined');
   assertEqual(isLView(value), true, 'Expecting LView');
+}
+
+export function assertFirstTemplatePass(tView: TView, errMessage?: string) {
+  assertEqual(
+      tView.firstTemplatePass, true, errMessage || 'Should only be called in first template pass.');
 }

@@ -6,131 +6,105 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {CompileMetadataResolver, CompilePipeSummary} from '@angular/compiler';
-import {DiagnosticTemplateInfo, getTemplateExpressionDiagnostics} from '@angular/compiler-cli/src/language_services';
+import * as tss from 'typescript/lib/tsserverlibrary';
 
+import {isAstResult} from './common';
 import {getTemplateCompletions} from './completions';
-import {getDefinition} from './definitions';
-import {getDeclarationDiagnostics} from './diagnostics';
-import {getHover} from './hover';
-import {Completions, Definition, Diagnostic, DiagnosticKind, Diagnostics, Hover, LanguageService, LanguageServiceHost, Span, TemplateSource} from './types';
-import {offsetSpan, spanOf} from './utils';
-
-
+import {getDefinitionAndBoundSpan, getTsDefinitionAndBoundSpan} from './definitions';
+import {getDeclarationDiagnostics, getTemplateDiagnostics, ngDiagnosticToTsDiagnostic, uniqueBySpan} from './diagnostics';
+import {getHover, getTsHover} from './hover';
+import {Diagnostic, LanguageService} from './types';
+import {TypeScriptServiceHost} from './typescript_host';
 
 /**
  * Create an instance of an Angular `LanguageService`.
  *
  * @publicApi
  */
-export function createLanguageService(host: LanguageServiceHost): LanguageService {
+export function createLanguageService(host: TypeScriptServiceHost): LanguageService {
   return new LanguageServiceImpl(host);
 }
 
 class LanguageServiceImpl implements LanguageService {
-  constructor(private host: LanguageServiceHost) {}
+  constructor(private readonly host: TypeScriptServiceHost) {}
 
-  private get metadataResolver(): CompileMetadataResolver { return this.host.resolver; }
-
-  getTemplateReferences(): string[] { return this.host.getTemplateReferences(); }
-
-  getDiagnostics(fileName: string): Diagnostics|undefined {
-    let results: Diagnostics = [];
-    let templates = this.host.getTemplates(fileName);
-    if (templates && templates.length) {
-      results.push(...this.getTemplateDiagnostics(fileName, templates));
-    }
-
-    let declarations = this.host.getDeclarations(fileName);
-    if (declarations && declarations.length) {
-      const summary = this.host.getAnalyzedModules();
-      results.push(...getDeclarationDiagnostics(declarations, summary));
-    }
-
-    return uniqueBySpan(results);
+  getTemplateReferences(): string[] {
+    this.host.getAnalyzedModules();  // same role as 'synchronizeHostData'
+    return this.host.getTemplateReferences();
   }
 
-  getPipesAt(fileName: string, position: number): CompilePipeSummary[] {
-    let templateInfo = this.host.getTemplateAstAtPosition(fileName, position);
-    if (templateInfo) {
-      return templateInfo.pipes;
-    }
-    return [];
-  }
+  getDiagnostics(fileName: string): tss.Diagnostic[] {
+    const analyzedModules = this.host.getAnalyzedModules();  // same role as 'synchronizeHostData'
+    const results: Diagnostic[] = [];
+    const templates = this.host.getTemplates(fileName);
 
-  getCompletionsAt(fileName: string, position: number): Completions {
-    let templateInfo = this.host.getTemplateAstAtPosition(fileName, position);
-    if (templateInfo) {
-      return getTemplateCompletions(templateInfo);
-    }
-  }
-
-  getDefinitionAt(fileName: string, position: number): Definition {
-    let templateInfo = this.host.getTemplateAstAtPosition(fileName, position);
-    if (templateInfo) {
-      return getDefinition(templateInfo);
-    }
-  }
-
-  getHoverAt(fileName: string, position: number): Hover|undefined {
-    let templateInfo = this.host.getTemplateAstAtPosition(fileName, position);
-    if (templateInfo) {
-      return getHover(templateInfo);
-    }
-  }
-
-  private getTemplateDiagnostics(fileName: string, templates: TemplateSource[]): Diagnostics {
-    const results: Diagnostics = [];
     for (const template of templates) {
-      const ast = this.host.getTemplateAst(template, fileName);
-      if (ast) {
-        if (ast.parseErrors && ast.parseErrors.length) {
-          results.push(...ast.parseErrors.map<Diagnostic>(
-              e => ({
-                kind: DiagnosticKind.Error,
-                span: offsetSpan(spanOf(e.span), template.span.start),
-                message: e.msg
-              })));
-        } else if (ast.templateAst && ast.htmlAst) {
-          const info: DiagnosticTemplateInfo = {
-            templateAst: ast.templateAst,
-            htmlAst: ast.htmlAst,
-            offset: template.span.start,
-            query: template.query,
-            members: template.members
-          };
-          const expressionDiagnostics = getTemplateExpressionDiagnostics(info);
-          results.push(...expressionDiagnostics);
-        }
-        if (ast.errors) {
-          results.push(...ast.errors.map<Diagnostic>(
-              e => ({kind: e.kind, span: e.span || template.span, message: e.message})));
-        }
+      const astOrDiagnostic = this.host.getTemplateAst(template);
+      if (isAstResult(astOrDiagnostic)) {
+        results.push(...getTemplateDiagnostics(astOrDiagnostic));
+      } else {
+        results.push(astOrDiagnostic);
       }
     }
-    return results;
-  }
-}
 
-function uniqueBySpan < T extends {
-  span: Span;
-}
-> (elements: T[] | undefined): T[]|undefined {
-  if (elements) {
-    const result: T[] = [];
-    const map = new Map<number, Set<number>>();
-    for (const element of elements) {
-      let span = element.span;
-      let set = map.get(span.start);
-      if (!set) {
-        set = new Set();
-        map.set(span.start, set);
-      }
-      if (!set.has(span.end)) {
-        set.add(span.end);
-        result.push(element);
+    const declarations = this.host.getDeclarations(fileName);
+    if (declarations && declarations.length) {
+      results.push(...getDeclarationDiagnostics(declarations, analyzedModules, this.host));
+    }
+
+    const sourceFile = fileName.endsWith('.ts') ? this.host.getSourceFile(fileName) : undefined;
+    return uniqueBySpan(results).map(d => ngDiagnosticToTsDiagnostic(d, sourceFile));
+  }
+
+  getCompletionsAt(fileName: string, position: number): tss.CompletionInfo|undefined {
+    this.host.getAnalyzedModules();  // same role as 'synchronizeHostData'
+    const ast = this.host.getTemplateAstAtPosition(fileName, position);
+    if (!ast) {
+      return;
+    }
+    const results = getTemplateCompletions(ast, position);
+    if (!results || !results.length) {
+      return;
+    }
+    return {
+      isGlobalCompletion: false,
+      isMemberCompletion: false,
+      isNewIdentifierLocation: false,
+      entries: results,
+    };
+  }
+
+  getDefinitionAt(fileName: string, position: number): tss.DefinitionInfoAndBoundSpan|undefined {
+    this.host.getAnalyzedModules();  // same role as 'synchronizeHostData'
+    const templateInfo = this.host.getTemplateAstAtPosition(fileName, position);
+    if (templateInfo) {
+      return getDefinitionAndBoundSpan(templateInfo, position);
+    }
+
+    // Attempt to get Angular-specific definitions in a TypeScript file, like templates defined
+    // in a `templateUrl` property.
+    if (fileName.endsWith('.ts')) {
+      const sf = this.host.getSourceFile(fileName);
+      if (sf) {
+        return getTsDefinitionAndBoundSpan(sf, position, this.host.tsLsHost);
       }
     }
-    return result;
+  }
+
+  getHoverAt(fileName: string, position: number): tss.QuickInfo|undefined {
+    this.host.getAnalyzedModules();  // same role as 'synchronizeHostData'
+    const templateInfo = this.host.getTemplateAstAtPosition(fileName, position);
+    if (templateInfo) {
+      return getHover(templateInfo, position);
+    }
+
+    // Attempt to get Angular-specific hover information in a TypeScript file, the NgModule a
+    // directive belongs to.
+    if (fileName.endsWith('.ts')) {
+      const sf = this.host.getSourceFile(fileName);
+      if (sf) {
+        return getTsHover(sf, position, this.host);
+      }
+    }
   }
 }

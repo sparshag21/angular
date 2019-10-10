@@ -457,6 +457,11 @@
           "tooltip": "Translate the app's template text into multiple languages."
         },
         {
+          "url": "guide/accessibility",
+          "title": "Accessibility",
+          "tooltip": "Design apps to be accessible to all users."
+        },
+        {
           "title": "Service Workers & PWA",
           "tooltip": "Angular service workers: Controlling caching of application resources.",
           "children": [
@@ -501,6 +506,12 @@
           "title": "Upgrading from AngularJS",
           "tooltip": "Incrementally upgrade an AngularJS application to Angular.",
           "children": [
+            {
+              "url": "guide/upgrade-setup",
+              "title": "Setup for Upgrading from AngularJS",
+              "tooltip": "Use code from the Angular QuickStart seed as part of upgrading from AngularJS.",
+              "hidden": true
+            },
             {
               "url": "guide/upgrade",
               "title": "Upgrading Instructions",
@@ -568,7 +579,7 @@
         {
           "url": "guide/ivy",
           "title": "Angular Ivy",
-          "tooltip": "Opting into Angular Ivy with Angular CLI."
+          "tooltip": "Opting out of Angular Ivy with Angular CLI."
         },
         {
           "url": "guide/web-worker",
@@ -582,16 +593,32 @@
       "tooltip": "Build, testing, and deployment information.",
       "children": [
         {
-          "url": "guide/setup",
+          "url": "guide/upgrade-setup",
           "title": "Upgrade setup",
           "tooltip": "How to set up the Angular QuickStart seed in the context of upgrading from AngularJS.",
           "hidden": true
         },
         {
-          "url": "guide/aot-compiler",
-          "title": "Ahead-of-Time Compilation",
-          "tooltip": "Learn why and how to use the Ahead-of-Time (AOT) compiler."
-        },
+          "title": "AoT Compiler",
+          "tooltip": "Understanding ahead-of-time compilation.",
+          "children": [
+            {
+              "url": "guide/aot-compiler",
+              "title": "Ahead-of-Time Compilation",
+              "tooltip": "Learn why and how to use the Ahead-of-Time (AoT) compiler."
+            },
+            {
+              "url": "guide/angular-compiler-options",
+              "title": "Angular Compiler Options",
+              "tooltip": "Configuring AoT compilation."
+           },
+           {
+              "url": "guide/aot-metadata-errors",
+              "title": "AoT Metadata Errors",
+              "tooltip": "Troubleshooting AoT compilation."
+           }
+        ]
+      },
         {
           "url": "guide/build",
           "title": "Building & Serving",

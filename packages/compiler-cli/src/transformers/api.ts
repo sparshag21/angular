@@ -161,6 +161,19 @@ export interface CompilerOptions extends ts.CompilerOptions {
   // (used by Closure Compiler's output of `goog.getMsg` for transition period)
   i18nUseExternalIds?: boolean;
 
+  /**
+   * Render `$localize` message ids with the specified legacy format (xlf, xlf2 or xmb).
+   *
+   * Use this option when use are using the `$localize` based localization messages but
+   * have not migrated the translation files to use the new `$localize` message id format.
+   *
+   * @deprecated
+   * `i18nLegacyMessageIdFormat` should only be used while migrating from legacy message id
+   * formatted translation files and will be removed at the same time as ViewEngine support is
+   * removed.
+   */
+  i18nLegacyMessageIdFormat?: string;
+
   // Whether to remove blank text nodes from compiled templates. It is `false` by default starting
   // from Angular 6.
   preserveWhitespaces?: boolean;
@@ -186,21 +199,17 @@ export interface CompilerOptions extends ts.CompilerOptions {
 
   /**
    * Tells the compiler to generate definitions using the Render3 style code generation.
-   * This option defaults to `false`.
-   *
-   * Not all features are supported with this option enabled. It is only supported
-   * for experimentation and testing of Render3 style code generation.
+   * This option defaults to `true`.
    *
    * Acceptable values are as follows:
    *
    * `false` - run ngc normally
    * `true` - run the ngtsc compiler instead of the normal ngc compiler
    * `ngtsc` - alias for `true`
-   * `tsc` - behave like plain tsc as much as possible (used for testing JIT code)
    *
    * @publicApi
    */
-  enableIvy?: boolean|'ngtsc'|'tsc';
+  enableIvy?: boolean|'ngtsc';
 
   /** @internal */
   collectAllErrors?: boolean;

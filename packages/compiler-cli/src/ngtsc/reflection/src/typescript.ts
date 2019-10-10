@@ -8,7 +8,7 @@
 
 import * as ts from 'typescript';
 
-import {ClassDeclaration, ClassMember, ClassMemberKind, CtorParameter, Declaration, Decorator, FunctionDefinition, Import, ReflectionHost, TsHelperFn} from './host';
+import {ClassDeclaration, ClassMember, ClassMemberKind, CtorParameter, Declaration, Decorator, FunctionDefinition, Import, ReflectionHost, isDecoratorIdentifier} from './host';
 import {typeToValue} from './type_to_value';
 
 /**
@@ -54,7 +54,7 @@ export class TypeScriptReflectionHost implements ReflectionHost {
       let typeNode = originalTypeNode;
 
       // Check if we are dealing with a simple nullable union type e.g. `foo: Foo|null`
-      // and extract the type. More complext union types e.g. `foo: Foo|Bar` are not supported.
+      // and extract the type. More complex union types e.g. `foo: Foo|Bar` are not supported.
       // We also don't need to support `foo: Foo|undefined` because Angular's DI injects `null` for
       // optional tokes that don't have providers.
       if (typeNode && ts.isUnionTypeNode(typeNode)) {
@@ -79,7 +79,16 @@ export class TypeScriptReflectionHost implements ReflectionHost {
   }
 
   getImportOfIdentifier(id: ts.Identifier): Import|null {
-    return this.getDirectImportOfIdentifier(id) || this.getImportOfNamespacedIdentifier(id);
+    const directImport = this.getDirectImportOfIdentifier(id);
+    if (directImport !== null) {
+      return directImport;
+    } else if (ts.isQualifiedName(id.parent) && id.parent.right === id) {
+      return this.getImportOfNamespacedIdentifier(id, getQualifiedNameRoot(id.parent));
+    } else if (ts.isPropertyAccessExpression(id.parent) && id.parent.name === id) {
+      return this.getImportOfNamespacedIdentifier(id, getFarLeftIdentifier(id.parent));
+    } else {
+      return null;
+    }
   }
 
   getExportsOfModule(node: ts.Node): Map<string, Declaration>|null {
@@ -97,7 +106,7 @@ export class TypeScriptReflectionHost implements ReflectionHost {
     }
     this.checker.getExportsOfModule(symbol).forEach(exportSymbol => {
       // Map each exported Symbol to a Declaration and add it to the map.
-      const decl = this.getDeclarationOfSymbol(exportSymbol);
+      const decl = this.getDeclarationOfSymbol(exportSymbol, null);
       if (decl !== null) {
         map.set(exportSymbol.name, decl);
       }
@@ -112,8 +121,26 @@ export class TypeScriptReflectionHost implements ReflectionHost {
   }
 
   hasBaseClass(clazz: ClassDeclaration): boolean {
-    return ts.isClassDeclaration(clazz) && clazz.heritageClauses !== undefined &&
+    return (ts.isClassDeclaration(clazz) || ts.isClassExpression(clazz)) &&
+        clazz.heritageClauses !== undefined &&
         clazz.heritageClauses.some(clause => clause.token === ts.SyntaxKind.ExtendsKeyword);
+  }
+
+  getBaseClassExpression(clazz: ClassDeclaration): ts.Expression|null {
+    if (!(ts.isClassDeclaration(clazz) || ts.isClassExpression(clazz)) ||
+        clazz.heritageClauses === undefined) {
+      return null;
+    }
+    const extendsClause =
+        clazz.heritageClauses.find(clause => clause.token === ts.SyntaxKind.ExtendsKeyword);
+    if (extendsClause === undefined) {
+      return null;
+    }
+    const extendsType = extendsClause.types[0];
+    if (extendsType === undefined) {
+      return null;
+    }
+    return extendsType.expression;
   }
 
   getDeclarationOfIdentifier(id: ts.Identifier): Declaration|null {
@@ -122,7 +149,7 @@ export class TypeScriptReflectionHost implements ReflectionHost {
     if (symbol === undefined) {
       return null;
     }
-    return this.getDeclarationOfSymbol(symbol);
+    return this.getDeclarationOfSymbol(symbol, id);
   }
 
   getDefinitionOfFunction(node: ts.Node): FunctionDefinition|null {
@@ -190,6 +217,7 @@ export class TypeScriptReflectionHost implements ReflectionHost {
 
   /**
    * Try to get the import info for this identifier as though it is a namespaced import.
+   *
    * For example, if the identifier is the `Directive` part of a qualified type chain like:
    *
    * ```
@@ -205,12 +233,9 @@ export class TypeScriptReflectionHost implements ReflectionHost {
    * @param id the TypeScript identifier to find the import info for.
    * @returns The import info if this is a namespaced import or `null`.
    */
-  protected getImportOfNamespacedIdentifier(id: ts.Identifier): Import|null {
-    if (!(ts.isQualifiedName(id.parent) && id.parent.right === id)) {
-      return null;
-    }
-    const namespaceIdentifier = getQualifiedNameRoot(id.parent);
-    if (!namespaceIdentifier) {
+  protected getImportOfNamespacedIdentifier(
+      id: ts.Identifier, namespaceIdentifier: ts.Identifier|null): Import|null {
+    if (namespaceIdentifier === null) {
       return null;
     }
     const namespaceSymbol = this.checker.getSymbolAtLocation(namespaceIdentifier);
@@ -244,7 +269,8 @@ export class TypeScriptReflectionHost implements ReflectionHost {
    *
    * @internal
    */
-  protected getDeclarationOfSymbol(symbol: ts.Symbol): Declaration|null {
+  private getDeclarationOfSymbol(symbol: ts.Symbol, originalId: ts.Identifier|null): Declaration
+      |null {
     // If the symbol points to a ShorthandPropertyAssignment, resolve it.
     if (symbol.valueDeclaration !== undefined &&
         ts.isShorthandPropertyAssignment(symbol.valueDeclaration)) {
@@ -253,31 +279,14 @@ export class TypeScriptReflectionHost implements ReflectionHost {
       if (shorthandSymbol === undefined) {
         return null;
       }
-      return this.getDeclarationOfSymbol(shorthandSymbol);
+      return this.getDeclarationOfSymbol(shorthandSymbol, originalId);
     }
-    let viaModule: string|null = null;
-    // Look through the Symbol's immediate declarations, and see if any of them are import-type
-    // statements.
-    if (symbol.declarations !== undefined && symbol.declarations.length > 0) {
-      for (let i = 0; i < symbol.declarations.length; i++) {
-        const decl = symbol.declarations[i];
-        if (ts.isImportSpecifier(decl) && decl.parent !== undefined &&
-            decl.parent.parent !== undefined && decl.parent.parent.parent !== undefined) {
-          // Find the ImportDeclaration that imported this Symbol.
-          const importDecl = decl.parent.parent.parent;
-          // The moduleSpecifier should always be a string.
-          if (ts.isStringLiteral(importDecl.moduleSpecifier)) {
-            // Check if the moduleSpecifier is absolute. If it is, this symbol comes from an
-            // external module, and the import path becomes the viaModule.
-            const moduleSpecifier = importDecl.moduleSpecifier.text;
-            if (!moduleSpecifier.startsWith('.')) {
-              viaModule = moduleSpecifier;
-              break;
-            }
-          }
-        }
-      }
-    }
+
+    const importInfo = originalId && this.getImportOfIdentifier(originalId);
+    const viaModule =
+        importInfo !== null && importInfo.from !== null && !importInfo.from.startsWith('.') ?
+        importInfo.from :
+        null;
 
     // Now, resolve the Symbol to its declaration by following any and all aliases.
     while (symbol.flags & ts.SymbolFlags.Alias) {
@@ -316,14 +325,15 @@ export class TypeScriptReflectionHost implements ReflectionHost {
 
     // The final resolved decorator should be a `ts.Identifier` - if it's not, then something is
     // wrong and the decorator can't be resolved statically.
-    if (!ts.isIdentifier(decoratorExpr)) {
+    if (!isDecoratorIdentifier(decoratorExpr)) {
       return null;
     }
 
-    const importDecl = this.getImportOfIdentifier(decoratorExpr);
+    const decoratorIdentifier = ts.isIdentifier(decoratorExpr) ? decoratorExpr : decoratorExpr.name;
+    const importDecl = this.getImportOfIdentifier(decoratorIdentifier);
 
     return {
-      name: decoratorExpr.text,
+      name: decoratorIdentifier.text,
       identifier: decoratorExpr,
       import: importDecl, node, args,
     };
@@ -515,4 +525,17 @@ function getQualifiedNameRoot(qualifiedName: ts.QualifiedName): ts.Identifier|nu
     qualifiedName = qualifiedName.left;
   }
   return ts.isIdentifier(qualifiedName.left) ? qualifiedName.left : null;
+}
+
+/**
+ * Compute the left most identifier in a property access chain. E.g. the `a` of `a.b.c.d`.
+ * @param propertyAccess The starting property access expression from which we want to compute
+ * the left most identifier.
+ * @returns the left most identifier in the chain or `null` if it is not an identifier.
+ */
+function getFarLeftIdentifier(propertyAccess: ts.PropertyAccessExpression): ts.Identifier|null {
+  while (ts.isPropertyAccessExpression(propertyAccess.expression)) {
+    propertyAccess = propertyAccess.expression;
+  }
+  return ts.isIdentifier(propertyAccess.expression) ? propertyAccess.expression : null;
 }

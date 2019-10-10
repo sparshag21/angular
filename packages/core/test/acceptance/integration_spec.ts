@@ -6,12 +6,12 @@
  * found in the LICENSE file at https://angular.io/license
  */
 import {CommonModule} from '@angular/common';
-import {Component, ContentChild, Directive, ElementRef, EventEmitter, HostBinding, HostListener, Input, NgModule, OnInit, Output, QueryList, TemplateRef, ViewChild, ViewChildren, ViewContainerRef} from '@angular/core';
+import {Component, ContentChild, Directive, ElementRef, EventEmitter, HostBinding, HostListener, Input, NgModule, OnInit, Output, Pipe, QueryList, TemplateRef, ViewChild, ViewChildren, ViewContainerRef} from '@angular/core';
 import {ngDevModeResetPerfCounters} from '@angular/core/src/util/ng_dev_mode';
 import {TestBed} from '@angular/core/testing';
 import {By} from '@angular/platform-browser';
 import {expect} from '@angular/platform-browser/testing/src/matchers';
-import {onlyInIvy} from '@angular/private/testing';
+import {ivyEnabled, onlyInIvy} from '@angular/private/testing';
 
 describe('acceptance integration tests', () => {
   function stripHtmlComments(str: string) { return str.replace(/<!--[\s\S]*?-->/g, ''); }
@@ -1043,10 +1043,10 @@ describe('acceptance integration tests', () => {
 
       @Directive({selector: '[DirWithStyle]'})
       class DirWithStyleDirective {
-        public stylesVal: string = '';
+        public stylesVal: any = '';
 
         @Input()
-        set style(value: string) { this.stylesVal = value; }
+        set style(value: any) { this.stylesVal = value; }
       }
 
       it('should delegate initial classes to a [class] input binding if present on a directive on the same element',
@@ -1061,8 +1061,10 @@ describe('acceptance integration tests', () => {
            const fixture = TestBed.createComponent(App);
            fixture.detectChanges();
 
-           expect(fixture.componentInstance.mockClassDirective.classesVal)
-               .toEqual('apple orange banana');
+           // the initial values always get sorted in non VE code
+           // but there is no sorting guarantee within VE code
+           expect(fixture.componentInstance.mockClassDirective.classesVal.split(/\s+/).sort())
+               .toEqual(['apple', 'banana', 'orange']);
          });
 
       it('should delegate initial styles to a [style] input binding if present on a directive on the same element',
@@ -1118,7 +1120,7 @@ describe('acceptance integration tests', () => {
                 fixture.detectChanges();
 
                 expect(fixture.componentInstance.mockStyleDirective.stylesVal)
-                    .toEqual('width:200px;height:500px');
+                    .toEqual({'width': '200px', 'height': '500px'});
               });
 
       onlyInIvy('Style binding merging works differently in Ivy')
@@ -1399,6 +1401,114 @@ describe('acceptance integration tests', () => {
 
       expect(target.classList.contains('-fred-36-')).toBeTruthy();
     });
+  });
+
+  describe('NgModule assertions', () => {
+    it('should throw with descriptive error message when a module imports itself', () => {
+      @Component({template: ''})
+      class FixtureComponent {
+      }
+
+      @NgModule({imports: [SomeModule], declarations: [FixtureComponent]})
+      class SomeModule {
+      }
+      expect(() => {
+        TestBed.configureTestingModule({imports: [SomeModule]}).createComponent(FixtureComponent);
+      }).toThrowError(`'SomeModule' module can't import itself`);
+    });
+
+    it('should throw with descriptive error message when a directive is passed to imports', () => {
+      @Component({template: ''})
+      class SomeComponent {
+      }
+
+      @NgModule({imports: [SomeComponent]})
+      class ModuleWithImportedComponent {
+      }
+      expect(() => {
+        TestBed.configureTestingModule({imports: [ModuleWithImportedComponent]})
+            .createComponent(SomeComponent);
+      })
+          .toThrowError(
+              // The ViewEngine error has a typo, whereas the Ivy one fixes it.
+              /^Unexpected directive 'SomeComponent' imported by the module 'ModuleWithImportedComponent'\. Please add (a|an) @NgModule annotation\.$/);
+    });
+
+    it('should throw with descriptive error message when a pipe is passed to imports', () => {
+      @Component({template: ''})
+      class FixtureComponent {
+      }
+      @Pipe({name: 'somePipe'})
+      class SomePipe {
+      }
+      @NgModule({imports: [SomePipe], declarations: [FixtureComponent]})
+      class ModuleWithImportedPipe {
+      }
+      expect(() => {
+        TestBed.configureTestingModule({imports: [ModuleWithImportedPipe]})
+            .createComponent(FixtureComponent);
+      })
+          .toThrowError(
+              // The ViewEngine error has a typo, whereas the Ivy one fixes it.
+              /^Unexpected pipe 'SomePipe' imported by the module 'ModuleWithImportedPipe'\. Please add (a|an) @NgModule annotation\.$/);
+    });
+
+    it('should throw with descriptive error message when a module is passed to declarations', () => {
+      @Component({template: ''})
+      class FixtureComponent {
+      }
+      @NgModule({})
+      class SomeModule {
+      }
+      @NgModule({declarations: [SomeModule, FixtureComponent]})
+      class ModuleWithDeclaredModule {
+      }
+
+      // The error is almost the same in Ivy and ViewEngine, however since Ivy's
+      // message is more correct it doesn't make sense to align it ViewEngine.
+      const expectedErrorMessage = ivyEnabled ?
+          `Unexpected value 'SomeModule' declared by the module 'ModuleWithDeclaredModule'. Please add a @Pipe/@Directive/@Component annotation.` :
+          `Unexpected module 'SomeModule' declared by the module 'ModuleWithDeclaredModule'. Please add a @Pipe/@Directive/@Component annotation.`;
+
+      expect(() => {
+        TestBed.configureTestingModule({imports: [ModuleWithDeclaredModule]})
+            .createComponent(FixtureComponent);
+      }).toThrowError(expectedErrorMessage);
+    });
+
+    it('should throw with descriptive error message when a declaration is missing annotation', () => {
+      @Component({template: ''})
+      class FixtureComponent {
+      }
+      class SomeClass {}
+      @NgModule({declarations: [SomeClass, FixtureComponent]})
+      class SomeModule {
+      }
+      expect(() => {
+        TestBed.configureTestingModule({imports: [SomeModule]}).createComponent(FixtureComponent);
+      })
+          .toThrowError(
+              `Unexpected value 'SomeClass' declared by the module 'SomeModule'. Please add a @Pipe/@Directive/@Component annotation.`);
+    });
+
+    it('should throw with descriptive error message when an imported module is missing annotation',
+       () => {
+         @Component({template: ''})
+         class FixtureComponent {
+         }
+         class SomeModule {}
+         @NgModule({imports: [SomeModule], declarations: [FixtureComponent]})
+         class ModuleWithImportedModule {
+         }
+         expect(() => {
+           TestBed.configureTestingModule({imports: [ModuleWithImportedModule]})
+               .createComponent(FixtureComponent);
+         })
+             .toThrowError(
+                 // The ViewEngine error has a typo, whereas the Ivy one fixes it.
+                 /^Unexpected value 'SomeModule' imported by the module 'ModuleWithImportedModule'\. Please add (a|an) @NgModule annotation\.$/);
+       });
+
   });
 
   it('should only call inherited host listeners once', () => {

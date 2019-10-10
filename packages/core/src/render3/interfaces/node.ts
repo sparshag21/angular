@@ -5,10 +5,9 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-import {TStylingContext} from '../styling_next/interfaces';
+import {StylingMapArray, TStylingContext} from '../interfaces/styling';
 import {CssSelector} from './projection';
 import {RNode} from './renderer';
-import {StylingContext} from './styling';
 import {LView, TView} from './view';
 
 
@@ -46,23 +45,31 @@ export const enum TNodeType {
  * Corresponds to the TNode.flags property.
  */
 export const enum TNodeFlags {
-  /** This bit is set if the node is a component */
-  isComponent = 0b000001,
+  /** This bit is set if the node is a host for any directive (including a component) */
+  isDirectiveHost = 0b00000001,
+
+  /**
+   * This bit is set if the node is a host for a component. Setting this bit implies that the
+   * isDirectiveHost bit is set as well. */
+  isComponentHost = 0b00000010,
 
   /** This bit is set if the node has been projected */
-  isProjected = 0b000010,
+  isProjected = 0b00000100,
 
   /** This bit is set if any directive on this node has content queries */
-  hasContentQuery = 0b000100,
+  hasContentQuery = 0b00001000,
 
   /** This bit is set if the node has any "class" inputs */
-  hasClassInput = 0b001000,
+  hasClassInput = 0b00010000,
 
   /** This bit is set if the node has any "style" inputs */
-  hasStyleInput = 0b010000,
+  hasStyleInput = 0b00100000,
+
+  /** This bit is set if the node has initial styling */
+  hasInitialStyling = 0b01000000,
 
   /** This bit is set if the node has been detached by i18n */
-  isDetached = 0b100000,
+  isDetached = 0b10000000,
 }
 
 /**
@@ -199,7 +206,7 @@ export const enum AttributeMarker {
    * ```
    * var _c1 = ['moo', 'car', AttributeMarker.I18n, 'foo', 'bar'];
    */
-  I18n,
+  I18n = 6,
 }
 
 /**
@@ -261,19 +268,13 @@ export interface TNode {
   directiveEnd: number;
 
   /**
-   * Stores the first index where property binding metadata is stored for
-   * this node.
+   * Stores indexes of property bindings. This field is only set in the ngDevMode and holds indexes
+   * of property bindings so TestBed can get bound property metadata for a given node.
    */
-  propertyMetadataStartIndex: number;
+  propertyBindings: number[]|null;
 
   /**
-   * Stores the exclusive final index where property binding metadata is
-   * stored for this node.
-   */
-  propertyMetadataEndIndex: number;
-
-  /**
-   * Stores if Node isComponent, isProjected, hasContentQuery, hasClassInput and hasStyleInput
+   * Stores if Node isComponent, isProjected, hasContentQuery, hasClassInput and hasStyleInput etc.
    */
   flags: TNodeFlags;
 
@@ -403,7 +404,6 @@ export interface TNode {
    */
   parent: TElementNode|TContainerNode|null;
 
-  stylingTemplate: StylingContext|null;
   /**
    * List of projected TNodes for a given component host element OR index into the said nodes.
    *
@@ -446,21 +446,44 @@ export interface TNode {
   projection: (TNode|RNode[])[]|number|null;
 
   /**
-   * A buffer of functions that will be called once `elementEnd` (or `element`) completes.
+   * A collection of all style bindings and/or static style values for an element.
    *
-   * Due to the nature of how directives work in Angular, some directive code may
-   * need to fire after any template-level code runs. If present, this array will
-   * be flushed (each function will be invoked) once the associated element is
-   * created.
+   * This field will be populated if and when:
    *
-   * If an element is created multiple times then this function will be populated
-   * with functions each time the creation block is called.
+   * - There are one or more initial styles on an element (e.g. `<div style="width:200px">`)
+   * - There are one or more style bindings on an element (e.g. `<div [style.width]="w">`)
+   *
+   * If and when there are only initial styles (no bindings) then an instance of `StylingMapArray`
+   * will be used here. Otherwise an instance of `TStylingContext` will be created when there
+   * are one or more style bindings on an element.
+   *
+   * During element creation this value is likely to be populated with an instance of
+   * `StylingMapArray` and only when the bindings are evaluated (which happens during
+   * update mode) then it will be converted to a `TStylingContext` if any style bindings
+   * are encountered. If and when this happens then the existing `StylingMapArray` value
+   * will be placed into the initial styling slot in the newly created `TStylingContext`.
    */
-  onElementCreationFns: Function[]|null;
-  // TODO (matsko): rename this to `styles` once the old styling impl is gone
-  newStyles: TStylingContext|null;
-  // TODO (matsko): rename this to `classes` once the old styling impl is gone
-  newClasses: TStylingContext|null;
+  styles: StylingMapArray|TStylingContext|null;
+
+  /**
+   * A collection of all class bindings and/or static class values for an element.
+   *
+   * This field will be populated if and when:
+   *
+   * - There are one or more initial classes on an element (e.g. `<div class="one two three">`)
+   * - There are one or more class bindings on an element (e.g. `<div [class.foo]="f">`)
+   *
+   * If and when there are only initial classes (no bindings) then an instance of `StylingMapArray`
+   * will be used here. Otherwise an instance of `TStylingContext` will be created when there
+   * are one or more class bindings on an element.
+   *
+   * During element creation this value is likely to be populated with an instance of
+   * `StylingMapArray` and only when the bindings are evaluated (which happens during
+   * update mode) then it will be converted to a `TStylingContext` if any class bindings
+   * are encountered. If and when this happens then the existing `StylingMapArray` value
+   * will be placed into the initial styling slot in the newly created `TStylingContext`.
+   */
+  classes: StylingMapArray|TStylingContext|null;
 }
 
 /** Static data for an element  */

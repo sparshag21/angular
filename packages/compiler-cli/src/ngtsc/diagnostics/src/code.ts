@@ -24,6 +24,7 @@ export enum ErrorCode {
   COMPONENT_MISSING_TEMPLATE = 2001,
   PIPE_MISSING_NAME = 2002,
   PARAM_MISSING_TOKEN = 2003,
+  DIRECTIVE_MISSING_SELECTOR = 2004,
 
   SYMBOL_NOT_EXPORTED = 3001,
   SYMBOL_EXPORTED_UNDER_DIFFERENT_NAME = 3002,
@@ -56,6 +57,32 @@ export enum ErrorCode {
    * otherwise imported.
    */
   NGMODULE_INVALID_REEXPORT = 6004,
+
+  /**
+   * Raised when ngcc tries to inject a synthetic decorator over one that already exists.
+   */
+  NGCC_MIGRATION_DECORATOR_INJECTION_ERROR = 7001,
+
+  /**
+   * Raised when ngcc tries to decorate a base class that was imported from outside the package.
+   */
+  NGCC_MIGRATION_EXTERNAL_BASE_CLASS = 7002,
+
+  /**
+   * Raised when ngcc tries to migrate a class that is extended from a dynamic base class
+   * expression.
+   */
+  NGCC_MIGRATION_DYNAMIC_BASE_CLASS = 7003,
+
+  /**
+   * An element name failed validation against the DOM schema.
+   */
+  SCHEMA_INVALID_ELEMENT = 8001,
+
+  /**
+   * An element's attribute name failed validation against the DOM schema.
+   */
+  SCHEMA_INVALID_ATTRIBUTE = 8002,
 }
 
 export function ngErrorCode(code: ErrorCode): number {

@@ -13,7 +13,7 @@
   const __extends = function(d: any, b: any) {
     for (const p in b)
       if (b.hasOwnProperty(p)) d[p] = b[p];
-    function __() { this.constructor = d; }
+    function __(this: Object) { this.constructor = d; }
     d.prototype = b === null ? Object.create(b) : ((__.prototype = b.prototype), new (__ as any)());
   };
   // Patch jasmine's describe/it/beforeEach/afterEach functions so test code always runs
@@ -149,13 +149,16 @@
    * synchronous-only zone.
    */
   function wrapDescribeInZone(describeBody: Function): Function {
-    return function() { return syncZone.run(describeBody, this, (arguments as any) as any[]); };
+    return function(this: unknown) {
+      return syncZone.run(describeBody, this, (arguments as any) as any[]);
+    };
   }
 
-  function runInTestZone(testBody: Function, applyThis: any, queueRunner: any, done?: Function) {
+  function runInTestZone(
+      testBody: Function, applyThis: any, queueRunner: QueueRunner, done?: Function) {
     const isClockInstalled = !!(jasmine as any)[symbol('clockInstalled')];
-    const testProxyZoneSpec = queueRunner.testProxyZoneSpec;
-    const testProxyZone = queueRunner.testProxyZone;
+    const testProxyZoneSpec = queueRunner.testProxyZoneSpec !;
+    const testProxyZone = queueRunner.testProxyZone !;
     let lastDelegate;
     if (isClockInstalled && enableAutoFakeAsyncWhenClockPatched) {
       // auto run a fakeAsync
@@ -180,12 +183,16 @@
     // The `done` callback is only passed through if the function expects at least one argument.
     // Note we have to make a function with correct number of arguments, otherwise jasmine will
     // think that all functions are sync or async.
-    return (testBody && (testBody.length ? function(done: Function) {
-              return runInTestZone(testBody, this, this.queueRunner, done);
-            } : function() { return runInTestZone(testBody, this, this.queueRunner); }));
+    return (testBody && (testBody.length ? function(this: QueueRunnerUserContext, done: Function) {
+              return runInTestZone(testBody, this, this.queueRunner !, done);
+            } : function(this: QueueRunnerUserContext) {
+              return runInTestZone(testBody, this, this.queueRunner !);
+            }));
   }
   interface QueueRunner {
     execute(): void;
+    testProxyZoneSpec: ZoneSpec|null;
+    testProxyZone: Zone|null;
   }
   interface QueueRunnerAttrs {
     queueableFns: {fn: Function}[];
@@ -194,22 +201,24 @@
     fail: () => void;
     onComplete: () => void;
     onException: (error: any) => void;
-    userContext: any;
+    userContext: QueueRunnerUserContext;
     timeout: {setTimeout: Function; clearTimeout: Function};
   }
-
+  type QueueRunnerUserContext = {queueRunner?: QueueRunner};
   const QueueRunner = (jasmine as any).QueueRunner as {
     new (attrs: QueueRunnerAttrs): QueueRunner;
   };
   (jasmine as any).QueueRunner = (function(_super) {
     __extends(ZoneQueueRunner, _super);
-    function ZoneQueueRunner(attrs: QueueRunnerAttrs) {
-      attrs.onComplete = (fn => () => {
-        // All functions are done, clear the test zone.
-        this.testProxyZone = null;
-        this.testProxyZoneSpec = null;
-        ambientZone.scheduleMicroTask('jasmine.onComplete', fn);
-      })(attrs.onComplete);
+    function ZoneQueueRunner(this: QueueRunner, attrs: QueueRunnerAttrs) {
+      if (attrs.onComplete) {
+        attrs.onComplete = (fn => () => {
+          // All functions are done, clear the test zone.
+          this.testProxyZone = null;
+          this.testProxyZoneSpec = null;
+          ambientZone.scheduleMicroTask('jasmine.onComplete', fn);
+        })(attrs.onComplete);
+      }
 
       const nativeSetTimeout = _global[Zone.__symbol__('setTimeout')];
       const nativeClearTimeout = _global[Zone.__symbol__('clearTimeout')];
@@ -237,7 +246,7 @@
 
       // patch attrs.onException
       const onException = attrs.onException;
-      attrs.onException = function(error: any) {
+      attrs.onException = function(this: undefined|QueueRunner, error: any) {
         if (error &&
             error.message ===
                 'Timeout - Async callback was not invoked within timeout specified by jasmine.DEFAULT_TIMEOUT_INTERVAL.') {
@@ -299,4 +308,4 @@
     };
     return ZoneQueueRunner;
   })(QueueRunner);
-})(global);
+})(typeof window !== 'undefined' && window || typeof self !== 'undefined' && self || global);

@@ -30,7 +30,7 @@ describe('static-queries migration with template strategy', () => {
       compilerOptions: {
         experimentalDecorators: true,
         lib: ['es2015'],
-      }
+      },
     }));
     writeFile('/angular.json', JSON.stringify({
       projects: {t: {architect: {build: {options: {tsConfig: './tsconfig.json'}}}}}

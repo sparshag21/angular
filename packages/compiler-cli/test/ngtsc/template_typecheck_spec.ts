@@ -8,6 +8,7 @@
 
 import * as ts from 'typescript';
 
+import {absoluteFrom as _} from '../../src/ngtsc/file_system';
 import {runInEachFileSystem} from '../../src/ngtsc/file_system/testing';
 import {loadStandardTestFiles} from '../helpers/src/mock_file_loading';
 
@@ -170,7 +171,10 @@ export declare class CommonModule {
 
       const diags = env.driveDiagnostics();
       expect(diags.length).toBe(1);
-      expect(diags[0].messageText).toContain('does_not_exist');
+      expect(diags[0].messageText)
+          .toEqual(`Property 'does_not_exist' does not exist on type '{ name: string; }'.`);
+      expect(diags[0].start).toBe(199);
+      expect(diags[0].length).toBe(19);
     });
 
     it('should accept an NgFor iteration over an any-typed value', () => {
@@ -236,7 +240,7 @@ export declare class CommonModule {
         `'does_not_exist' does not exist on type '{ name: string; }'`,
         `Expected 2 arguments, but got 3.`,
         `Argument of type '"test"' is not assignable to parameter of type 'number'`,
-        `Argument of type '{ name: string; }' is not assignable to parameter of type '{}[]'`,
+        `Argument of type '{ name: string; }' is not assignable to parameter of type 'unknown[]'`,
       ];
 
       for (const error of allErrors) {
@@ -270,7 +274,9 @@ export declare class CommonModule {
 
       const diags = env.driveDiagnostics();
       expect(diags.length).toBe(1);
-      expect(diags[0].messageText).toContain('does_not_exist');
+      expect(diags[0].messageText).toEqual(`Property 'does_not_exist' does not exist on type 'T'.`);
+      expect(diags[0].start).toBe(206);
+      expect(diags[0].length).toBe(19);
     });
 
     it('should property type-check a microsyntax variable with the same name as the expression',
@@ -330,14 +336,224 @@ export declare class CommonModule {
 
       const diags = env.driveDiagnostics();
       expect(diags.length).toBe(2);
-
-      // Error from the binding to [fromBase].
       expect(diags[0].messageText)
           .toBe(`Type 'number' is not assignable to type 'string | undefined'.`);
-
-      // Error from the binding to [fromChild].
+      expect(diags[0].start).toEqual(386);
+      expect(diags[0].length).toEqual(14);
       expect(diags[1].messageText)
           .toBe(`Type 'number' is not assignable to type 'boolean | undefined'.`);
+      expect(diags[1].start).toEqual(401);
+      expect(diags[1].length).toEqual(15);
+    });
+
+    describe('legacy schema checking with the DOM schema', () => {
+      beforeEach(
+          () => { env.tsconfig({ivyTemplateTypeCheck: true, fullTemplateTypeCheck: false}); });
+
+      it('should check for unknown elements', () => {
+        env.write('test.ts', `
+        import {Component, NgModule} from '@angular/core';
+        @Component({
+          selector: 'blah',
+          template: '<foo>test</foo>',
+        })
+        export class FooCmp {}
+        @NgModule({
+          declarations: [FooCmp],
+        })
+        export class FooModule {}
+      `);
+        const diags = env.driveDiagnostics();
+        expect(diags.length).toBe(1);
+        expect(diags[0].messageText).toBe(`'foo' is not a valid HTML element.`);
+      });
+
+      it('should check for unknown properties', () => {
+        env.write('test.ts', `
+        import {Component, NgModule} from '@angular/core';
+        @Component({
+          selector: 'blah',
+          template: '<div [foo]="1">test</div>',
+        })
+        export class FooCmp {}
+        @NgModule({
+          declarations: [FooCmp],
+        })
+        export class FooModule {}
+      `);
+        const diags = env.driveDiagnostics();
+        expect(diags.length).toBe(1);
+        expect(diags[0].messageText).toBe(`'foo' is not a valid property of <div>.`);
+      });
+
+      it('should convert property names when binding special properties', () => {
+        env.write('test.ts', `
+        import {Component, NgModule} from '@angular/core';
+        @Component({
+          selector: 'blah',
+          template: '<label [for]="test">',
+        })
+        export class FooCmp {
+          test: string = 'test';
+        }
+        @NgModule({
+          declarations: [FooCmp],
+        })
+        export class FooModule {}
+      `);
+        const diags = env.driveDiagnostics();
+        // Should not be an error to bind [for] of <label>, even though the actual property in the
+        // DOM schema.
+        expect(diags.length).toBe(0);
+      });
+
+      it('should produce diagnostics for custom-elements-style elements when not using the CUSTOM_ELEMENTS_SCHEMA',
+         () => {
+           env.write('test.ts', `
+          import {Component, NgModule} from '@angular/core';
+          @Component({
+            selector: 'blah',
+            template: '<custom-element [foo]="1">test</custom-element>',
+          })
+          export class FooCmp {}
+          @NgModule({
+            declarations: [FooCmp],
+          })
+          export class FooModule {}
+      `);
+           const diags = env.driveDiagnostics();
+           expect(diags.length).toBe(2);
+           expect(diags[0].messageText).toBe(`'custom-element' is not a valid HTML element.`);
+           expect(diags[1].messageText).toBe(`'foo' is not a valid property of <custom-element>.`);
+         });
+
+      it('should not produce diagnostics for custom-elements-style elements when using the CUSTOM_ELEMENTS_SCHEMA',
+         () => {
+           env.write('test.ts', `
+            import {Component, NgModule, CUSTOM_ELEMENTS_SCHEMA} from '@angular/core';
+      
+            @Component({
+              selector: 'blah',
+              template: '<custom-element [foo]="1">test</custom-element>',
+            })
+            export class FooCmp {}
+      
+            @NgModule({
+              declarations: [FooCmp],
+              schemas: [CUSTOM_ELEMENTS_SCHEMA],
+            })
+            export class FooModule {}
+          `);
+           const diags = env.driveDiagnostics();
+           expect(diags).toEqual([]);
+         });
+
+      it('should not produce diagnostics when using the NO_ERRORS_SCHEMA', () => {
+        env.write('test.ts', `
+        import {Component, NgModule, NO_ERRORS_SCHEMA} from '@angular/core';
+  
+        @Component({
+          selector: 'blah',
+          template: '<foo [bar]="1"></foo>',
+        })
+        export class FooCmp {}
+  
+        @NgModule({
+          declarations: [FooCmp],
+          schemas: [NO_ERRORS_SCHEMA],
+        })
+        export class FooModule {}
+      `);
+        const diags = env.driveDiagnostics();
+        expect(diags).toEqual([]);
+      });
+    });
+
+    // Test both sync and async compilations, see https://github.com/angular/angular/issues/32538
+    ['sync', 'async'].forEach(mode => {
+      describe(`error locations [${mode}]`, () => {
+        let driveDiagnostics: () => Promise<ReadonlyArray<ts.Diagnostic>>;
+        beforeEach(() => {
+          if (mode === 'async') {
+            env.enablePreloading();
+            driveDiagnostics = () => env.driveDiagnosticsAsync();
+          } else {
+            driveDiagnostics = () => Promise.resolve(env.driveDiagnostics());
+          }
+        });
+
+        it('should be correct for direct templates', async() => {
+          env.write('test.ts', `
+          import {Component, NgModule} from '@angular/core';
+      
+          @Component({
+            selector: 'test',
+            template: \`<p>
+              {{user.does_not_exist}}
+            </p>\`,
+          })
+          export class TestCmp {
+            user: {name: string}[];
+          }`);
+
+          const diags = await driveDiagnostics();
+          expect(diags.length).toBe(1);
+          expect(diags[0].file !.fileName).toBe(_('/test.ts'));
+          expect(getSourceCodeForDiagnostic(diags[0])).toBe('user.does_not_exist');
+        });
+
+        it('should be correct for indirect templates', async() => {
+          env.write('test.ts', `
+          import {Component, NgModule} from '@angular/core';
+      
+          const TEMPLATE = \`<p>
+            {{user.does_not_exist}}
+          </p>\`;
+
+          @Component({
+            selector: 'test',
+            template: TEMPLATE,
+          })
+          export class TestCmp {
+            user: {name: string}[];
+          }`);
+
+          const diags = await driveDiagnostics();
+          expect(diags.length).toBe(1);
+          expect(diags[0].file !.fileName).toBe(_('/test.ts') + ' (TestCmp template)');
+          expect(getSourceCodeForDiagnostic(diags[0])).toBe('user.does_not_exist');
+          expect(getSourceCodeForDiagnostic(diags[0].relatedInformation ![0])).toBe('TEMPLATE');
+        });
+
+        it('should be correct for external templates', async() => {
+          env.write('template.html', `<p>
+          {{user.does_not_exist}}
+        </p>`);
+          env.write('test.ts', `
+          import {Component, NgModule} from '@angular/core';
+      
+
+          @Component({
+            selector: 'test',
+            templateUrl: './template.html',
+          })
+          export class TestCmp {
+            user: {name: string}[];
+          }`);
+
+          const diags = await driveDiagnostics();
+          expect(diags.length).toBe(1);
+          expect(diags[0].file !.fileName).toBe(_('/template.html'));
+          expect(getSourceCodeForDiagnostic(diags[0])).toBe('user.does_not_exist');
+          expect(getSourceCodeForDiagnostic(diags[0].relatedInformation ![0]))
+              .toBe(`'./template.html'`);
+        });
+      });
     });
   });
 });
+
+function getSourceCodeForDiagnostic(diag: ts.Diagnostic): string {
+  const text = diag.file !.text;
+  return text.substr(diag.start !, diag.length !);
+}

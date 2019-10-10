@@ -13,11 +13,11 @@ load(
     "DEFAULT_NG_COMPILER",
     "DEFAULT_NG_XI18N",
     "DEPS_ASPECTS",
-    "NodeModuleInfo",
     "NodeModuleSources",
     "TsConfigInfo",
     "collect_node_modules_aspect",
     "compile_ts",
+    "transitive_js_ecma_script_module_info",
     "ts_providers_dict_to_struct",
     "tsc_wrapped_tsconfig",
 )
@@ -42,6 +42,11 @@ def compile_strategy(ctx):
     strategy = "legacy"
     if "compile" in ctx.var:
         strategy = ctx.var["compile"]
+
+    # Enable Angular targets extracted by Kythe Angular indexer to be compiled with the Ivy compiler architecture.
+    # TODO(ayazhafiz): remove once Ivy has landed as the default in g3.
+    if ctx.var.get("GROK_ELLIPSIS_BUILD", None) != None:
+        strategy = "aot"
 
     if strategy not in ["legacy", "aot"]:
         fail("Unknown --define=compile value '%s'" % strategy)
@@ -233,7 +238,7 @@ def _expected_outs(ctx):
             continue
 
         filter_summaries = ctx.attr.filter_summaries
-        closure_js = [f.replace(".js", ".closure.js") for f in devmode_js if not filter_summaries or not f.endswith(".ngsummary.js")]
+        closure_js = [f.replace(".js", ".mjs") for f in devmode_js if not filter_summaries or not f.endswith(".ngsummary.js")]
         declarations = [f.replace(".js", ".d.ts") for f in devmode_js]
 
         devmode_js_files += [ctx.actions.declare_file(basename + ext) for ext in devmode_js]
@@ -258,7 +263,7 @@ def _expected_outs(ctx):
     if _should_produce_flat_module_outs(ctx):
         flat_module_out = _flat_module_out_file(ctx)
         devmode_js_files.append(ctx.actions.declare_file("%s.js" % flat_module_out))
-        closure_js_files.append(ctx.actions.declare_file("%s.closure.js" % flat_module_out))
+        closure_js_files.append(ctx.actions.declare_file("%s.mjs" % flat_module_out))
         bundle_index_typings = ctx.actions.declare_file("%s.d.ts" % flat_module_out)
         declaration_files.append(bundle_index_typings)
         if is_legacy_ngc:
@@ -268,7 +273,10 @@ def _expected_outs(ctx):
 
     # TODO(alxhub): i18n is only produced by the legacy compiler currently. This should be re-enabled
     # when ngtsc can extract messages
-    if is_legacy_ngc:
+    if is_legacy_ngc and _is_bazel():
+        i18n_messages_files = [ctx.actions.declare_file(ctx.label.name + "_ngc_messages.xmb")]
+    elif is_legacy_ngc:
+        # write the xmb file to blaze-genfiles since that path appears in the translation console keys
         i18n_messages_files = [ctx.new_file(ctx.genfiles_dir, ctx.label.name + "_ngc_messages.xmb")]
     else:
         i18n_messages_files = []
@@ -351,8 +359,8 @@ _EXTRA_NODE_OPTIONS_FLAGS = [
     "--node_options=--expose-gc",
     # Show ~full stack traces, instead of cutting off after 10 items.
     "--node_options=--stack-trace-limit=100",
-    # Give 2 GB RAM to node to make bigger google3 modules to compile, we should be able to drop this after Ivy/ngtsc is the default in g3
-    "--node_options=--max-old-space-size=2048",
+    # Give 4 GB RAM to node to allow bigger google3 modules to compile.
+    "--node_options=--max-old-space-size=4096",
 ]
 
 def ngc_compile_action(
@@ -365,7 +373,8 @@ def ngc_compile_action(
         node_opts,
         locale = None,
         i18n_args = [],
-        dts_bundles_out = None):
+        dts_bundles_out = None,
+        compile_mode = "prodmode"):
     """Helper function to create the ngc action.
 
     This is exposed for google3 to wire up i18n replay rules, and is not intended
@@ -390,13 +399,13 @@ def ngc_compile_action(
     is_legacy_ngc = _is_legacy_ngc(ctx)
 
     mnemonic = "AngularTemplateCompile"
-    progress_message = "Compiling Angular templates (%s) %s" % (_compiler_name(ctx), label)
+    progress_message = "Compiling Angular templates (%s - %s) %s" % (_compiler_name(ctx), compile_mode, label)
 
     if locale:
         mnemonic = "AngularI18NMerging"
         supports_workers = "0"
-        progress_message = ("Recompiling Angular templates (ngc) %s for locale %s" %
-                            (label, locale))
+        progress_message = ("Recompiling Angular templates (ngc - %s) %s for locale %s" %
+                            (compile_mode, label, locale))
     else:
         supports_workers = str(int(ctx.attr._supports_workers))
 
@@ -426,23 +435,26 @@ def ngc_compile_action(
     )
 
     if is_legacy_ngc and messages_out != None:
+        # The base path is bin_dir because of the way the ngc
+        # compiler host is configured. Under Blaze, we need to explicitly
+        # point to genfiles/ to redirect the output.
+        # See _expected_outs above, where the output path for the message file
+        # is conditional on whether we are in Bazel.
+        message_file_path = messages_out[0].short_path if _is_bazel() else "../genfiles/" + messages_out[0].short_path
         ctx.actions.run(
             inputs = inputs,
             outputs = messages_out,
             executable = ctx.executable.ng_xi18n,
             arguments = (_EXTRA_NODE_OPTIONS_FLAGS +
                          [tsconfig_file.path] +
-                         # The base path is bin_dir because of the way the ngc
-                         # compiler host is configured. So we need to explicitly
-                         # point to genfiles/ to redirect the output.
-                         ["../genfiles/" + messages_out[0].short_path]),
+                         [message_file_path]),
             progress_message = "Extracting Angular 2 messages (ng_xi18n)",
             mnemonic = "Angular2MessageExtractor",
         )
 
     if dts_bundles_out != None:
         # combine the inputs and outputs and filter .d.ts and json files
-        filter_inputs = [f for f in list(inputs) + outputs if f.path.endswith(".d.ts") or f.path.endswith(".json")]
+        filter_inputs = [f for f in inputs.to_list() + outputs if f.path.endswith(".d.ts") or f.path.endswith(".json")]
 
         if _should_produce_flat_module_outs(ctx):
             dts_entry_points = ["%s.d.ts" % _flat_module_out_file(ctx)]
@@ -453,7 +465,7 @@ def ngc_compile_action(
             dts_entry_points.append(_R3_SYMBOLS_DTS_FILE)
 
         ctx.actions.run(
-            progress_message = "Bundling DTS %s" % str(ctx.label),
+            progress_message = "Bundling DTS (%s) %s" % (compile_mode, str(ctx.label)),
             mnemonic = "APIExtractor",
             executable = ctx.executable.api_extractor,
             inputs = filter_inputs,
@@ -485,7 +497,15 @@ def _filter_ts_inputs(all_inputs):
         if f.path.endswith(".js") or f.path.endswith(".ts") or f.path.endswith(".json")
     ]
 
-def _compile_action(ctx, inputs, outputs, dts_bundles_out, messages_out, tsconfig_file, node_opts):
+def _compile_action(
+        ctx,
+        inputs,
+        outputs,
+        dts_bundles_out,
+        messages_out,
+        tsconfig_file,
+        node_opts,
+        compile_mode):
     # Give the Angular compiler all the user-listed assets
     file_inputs = list(ctx.files.assets)
 
@@ -523,16 +543,16 @@ def _compile_action(ctx, inputs, outputs, dts_bundles_out, messages_out, tsconfi
         ],
     )
 
-    return ngc_compile_action(ctx, ctx.label, action_inputs, outputs, messages_out, tsconfig_file, node_opts, None, [], dts_bundles_out)
+    return ngc_compile_action(ctx, ctx.label, action_inputs, outputs, messages_out, tsconfig_file, node_opts, None, [], dts_bundles_out, compile_mode)
 
 def _prodmode_compile_action(ctx, inputs, outputs, tsconfig_file, node_opts):
     outs = _expected_outs(ctx)
-    return _compile_action(ctx, inputs, outputs + outs.closure_js, None, outs.i18n_messages, tsconfig_file, node_opts)
+    return _compile_action(ctx, inputs, outputs + outs.closure_js, None, outs.i18n_messages, tsconfig_file, node_opts, "prodmode")
 
 def _devmode_compile_action(ctx, inputs, outputs, tsconfig_file, node_opts):
     outs = _expected_outs(ctx)
     compile_action_outputs = outputs + outs.devmode_js + outs.declarations + outs.summaries + outs.metadata
-    _compile_action(ctx, inputs, compile_action_outputs, outs.dts_bundles, None, tsconfig_file, node_opts)
+    _compile_action(ctx, inputs, compile_action_outputs, outs.dts_bundles, None, tsconfig_file, node_opts, "devmode")
 
 def _ts_expected_outs(ctx, label, srcs_files = []):
     # rules_typescript expects a function with two or more arguments, but our
@@ -560,13 +580,7 @@ def ng_module_impl(ctx, ts_compile_actions):
     providers = ts_compile_actions(
         ctx,
         is_library = True,
-        # Filter out the node_modules from deps passed to TypeScript compiler
-        # since they don't have the required providers.
-        # They were added to the action inputs for tsc_wrapped already.
-        # strict_deps checking currently skips node_modules.
-        # TODO(alexeagle): turn on strict deps checking when we have a real
-        # provider for JS/DTS inputs to ts_library.
-        deps = [d for d in ctx.attr.deps if not NodeModuleInfo in d],
+        deps = ctx.attr.deps,
         compile_action = _prodmode_compile_action,
         devmode_compile_action = _devmode_compile_action,
         tsc_wrapped_tsconfig = _ngc_tsconfig,
@@ -599,7 +613,17 @@ def ng_module_impl(ctx, ts_compile_actions):
     return providers
 
 def _ng_module_impl(ctx):
-    return ts_providers_dict_to_struct(ng_module_impl(ctx, compile_ts))
+    ts_providers = ng_module_impl(ctx, compile_ts)
+
+    # Add in new JS providers
+    ts_providers["providers"].extend([
+        transitive_js_ecma_script_module_info(
+            sources = ts_providers["typescript"]["es6_sources"],
+            deps = ctx.attr.deps,
+        ),
+    ])
+
+    return ts_providers_dict_to_struct(ts_providers)
 
 local_deps_aspects = [collect_node_modules_aspect, _collect_summaries_aspect]
 

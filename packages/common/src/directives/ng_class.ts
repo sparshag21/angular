@@ -5,7 +5,7 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-import {Directive, DoCheck, Input, ɵRenderFlags, ɵɵclassMap, ɵɵdefineDirective, ɵɵstyling, ɵɵstylingApply} from '@angular/core';
+import {Directive, DoCheck, Input, ɵRenderFlags, ɵɵallocHostVars, ɵɵclassMap, ɵɵdefineDirective} from '@angular/core';
 
 import {NgClassImpl, NgClassImplProvider} from './ng_class_impl';
 
@@ -32,19 +32,21 @@ export const ngClassDirectiveDef__PRE_R3__ = undefined;
 export const ngClassDirectiveDef__POST_R3__ = ɵɵdefineDirective({
   type: function() {} as any,
   selectors: null as any,
-  factory: () => {},
   hostBindings: function(rf: ɵRenderFlags, ctx: any, elIndex: number) {
     if (rf & ɵRenderFlags.Create) {
-      ɵɵstyling();
+      ɵɵallocHostVars(1);
     }
     if (rf & ɵRenderFlags.Update) {
       ɵɵclassMap(ctx.getValue());
-      ɵɵstylingApply();
     }
   }
 });
 
 export const ngClassDirectiveDef = ngClassDirectiveDef__PRE_R3__;
+
+export const ngClassFactoryDef__PRE_R3__ = undefined;
+export const ngClassFactoryDef__POST_R3__ = function() {};
+export const ngClassFactoryDef = ngClassFactoryDef__PRE_R3__;
 
 /**
  * Serves as the base non-VE container for NgClass.
@@ -62,6 +64,7 @@ export const ngClassDirectiveDef = ngClassDirectiveDef__PRE_R3__;
  */
 export class NgClassBase {
   static ngDirectiveDef: any = ngClassDirectiveDef;
+  static ngFactoryDef: any = ngClassFactoryDef;
 
   constructor(protected _delegate: NgClassImpl) {}
 

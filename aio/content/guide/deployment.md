@@ -8,7 +8,7 @@ When you are ready to deploy your Angular application to a remote server, you ha
 
 ## Simple deployment options
 
-Before fully deploying your application, you can test the process, build configuration, and deployed behavior by using one of these interim techniques
+Before fully deploying your application, you can test the process, build configuration, and deployed behavior by using one of these interim techniques.
 
 ### Building and serving from disk
 
@@ -41,7 +41,7 @@ You will need two terminals to get the live-reload experience.
 
   <code-example language="none" class="code-shell">
 
-   lite-server --baseDir="dist"
+   lite-server --baseDir="dist/project-name"
 
   </code-example>
 
@@ -52,6 +52,35 @@ You will need two terminals to get the live-reload experience.
 This method is for development and testing only, and is not a supported or secure way of deploying an application.
 
 </div>
+
+### Automatic deployment with the CLI
+
+The Angular CLI command `ng deploy` (introduced in version 8.3.0) executes the `deploy` [CLI builder](https://angular.io/guide/cli-builder) associated with your project. A number of third-party builders implement deployment capabilities to different platforms. You can add any of them to your project by running `ng add [package name]`.
+
+When you add a package with deployment capability, it'll automatically update your workspace configuration (`angular.json` file) with a `deploy` section for the selected project. You can then use the `ng deploy` command to deploy that project.
+
+For example, the following command automatically deploys a project to Firebase.
+
+<code-example language="none" class="code-shell">
+ng add @angular/fire
+ng deploy
+</code-example>
+
+The command is interactive. In this case, you must have or create a Firebase account, and authenticate using that account. The command prompts you to select a Firebase project for deployment
+
+After the command produces an optimal build of your application (equivalent to `ng deploy --prod`), it'll upload the production assets to Firebase.
+
+In the table below, you can find a list of packages which implement deployment functionality to different platforms. The `deploy` command for each package may require different command line options. You can read more by following the links associated with the package names below:
+
+| Deployment to                                                 | Package                                                                        |
+|---------------------------------------------------------------|--------------------------------------------------------------------------------|
+| [Firebase hosting](https://firebase.google.com/docs/hosting)  | [`@angular/fire`](https://npmjs.org/package/@angular/fire)                     |
+| [Azure](https://azure.microsoft.com/en-us/)                   | [`@azure/ng-deploy`](https://npmjs.org/package/@azure/ng-deploy)               |
+| [Now](https://zeit.co/now)                                    | [`@zeit/ng-deploy`](https://npmjs.org/package/@zeit/ng-deploy)                 |
+| [Netlify](https://www.netlify.com/)                           | [`@netlify-builder/deploy`](https://npmjs.org/package/@netlify-builder/deploy) |
+| [GitHub pages](https://pages.github.com/)                     | [`angular-cli-ghpages`](https://npmjs.org/package/angular-cli-ghpages)         |
+
+If you're deploying to a self-managed server or there's no builder for your favorite cloud platform, you can either create a builder that allows you to use the `ng deploy` command, or read through this guide to learn how to manually deploy your app.
 
 ### Basic deployment to a remote server
 
@@ -152,7 +181,7 @@ The list is by no means exhaustive, but should provide you with a good starting 
 [rewrite rule](http://httpd.apache.org/docs/current/mod/mod_rewrite.html) to the `.htaccess` file as shown
   (https://ngmilk.rocks/2015/03/09/angularjs-html5-mode-or-pretty-urls-on-apache-using-htaccess/):
 
-  <code-example format=".">
+  <code-example>
     RewriteEngine On
     &#35 If an existing asset or directory is requested go to it as it is
     RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} -f [OR]
@@ -175,7 +204,7 @@ modified to serve `index.html`:
 * [IIS](https://www.iis.net/): add a rewrite rule to `web.config`, similar to the one shown
 [here](http://stackoverflow.com/a/26152011/2116927):
 
-  <code-example format='.' language="xml" linenums="false">
+  <code-example format='.' language="xml">
     &lt;system.webServer&gt;
       &lt;rewrite&gt;
         &lt;rules&gt;
@@ -207,7 +236,7 @@ and to
 * [Firebase hosting](https://firebase.google.com/docs/hosting/): add a
 [rewrite rule](https://firebase.google.com/docs/hosting/url-redirects-rewrites#section-rewrites).
 
-  <code-example format="." language="json">
+  <code-example language="json">
     "rewrites": [ {
       "source": "**",
       "destination": "/index.html"
@@ -275,7 +304,7 @@ Configure the Angular Router to defer loading of all other modules (and their as
 or by [_lazy loading_](guide/router#asynchronous-routing "Lazy loading")
 them on demand.
 
-<div class="callout is-helpful>
+<div class="callout is-helpful">
 
 <header>Don't eagerly import something from a lazy-loaded module</header>
 
@@ -403,7 +432,7 @@ Differential loading, which is supported by default in Angular CLI version 8 and
 
 Differential loading is a strategy where the CLI builds two separate bundles as part of your deployed application.
 
-* The first bundle contains modern ES1015 syntax, takes advantage of built-in support in modern browsers, ships less polyfills, and results in a smaller bundle size.
+* The first bundle contains modern ES2015 syntax, takes advantage of built-in support in modern browsers, ships less polyfills, and results in a smaller bundle size.
 
 * The second bundle contains code in the old ES5 syntax, along with all necessary polyfills. This results in a larger bundle size, but supports older browsers.
 
@@ -436,7 +465,7 @@ When you create a production build using [`ng build --prod`](cli/build), the CLI
 
 The `index.html` file is also modified during the build process to include script tags that enable differential loading. See the sample output below from the `index.html` file produced during a build using `ng build`.
 
-<code-example language="html" format="." linenums="false">
+<code-example language="html">
 &lt;body>
   &lt;app-root>&lt;/app-root>
   &lt;script src="runtime-es2015.js" type="module">&lt;/script>
@@ -479,7 +508,7 @@ not IE 9-11 # For IE 9-11 support, remove 'not'.
 
 The `tsconfig.json` looks like this:
 
-<code-example language="json" format="." linenums="false">
+<code-example language="json">
 
 {
   "compileOnSave": false,
@@ -550,7 +579,7 @@ To maintain the benefits of differential loading, however, a better option is to
 
 To do this for `ng serve`, create a new file, `tsconfig-es5.app.json` next to `tsconfig.app.json` with the following content.
 
-<code-example language="json" format="." linenums="false">
+<code-example language="json">
 
 {
  "extends": "./tsconfig.app.json",
@@ -563,7 +592,7 @@ To do this for `ng serve`, create a new file, `tsconfig-es5.app.json` next to `t
 
 In `angular.json` add two new configuration sections under the `build` and `serve` targets to point to the new TypeScript configuration.
 
-<code-example language="json" format="." linenums="false">
+<code-example language="json">
 
 "build": {
   "builder": "@angular-devkit/build-angular:browser",
@@ -589,14 +618,14 @@ In `angular.json` add two new configuration sections under the `build` and `serv
      ...
     },
     "es5": {
-      "browserTarget": "app:build:es5"
+      "browserTarget": "<app-name>:build:es5"
     }
   }
 },
 
 </code-example>
 
-You can then run the serve with this configuration.
+You can then run the `ng serve` command with this configuration. Make sure to replace `<app-name>` (in `"<app-name>:build:es5"`) with the actual name of the app, as it appears under `projects` in `angular.json`. For example, if your app name is `myAngularApp` the config will become `"browserTarget": "myAngularApp:build:es5"`.
 
 <code-example language="none" class="code-shell">
 
@@ -610,7 +639,7 @@ ng serve --configuration es5
 
 Create a new file, `tsconfig-es5.spec.json` next to `tsconfig.spec.json` with the following content.
 
-<code-example language="json" format="." linenums="false">
+<code-example language="json">
 
 {
  "extends": "./tsconfig.spec.json",
@@ -621,7 +650,7 @@ Create a new file, `tsconfig-es5.spec.json` next to `tsconfig.spec.json` with th
 
 </code-example>
 
-<code-example language="json" format="." linenums="false">
+<code-example language="json">
 
 "test": {
   "builder": "@angular-devkit/build-angular:karma",
@@ -649,26 +678,26 @@ ng test --configuration es5
 
 Create an [ES5 serve configuration](guide/deployment#configuring-serve-for-es5) as explained above, and configuration an ES5 configuration for the E2E target.
 
-<code-example language="json" format="." linenums="false">
+<code-example language="json">
 
-"test": {
+"e2e": {
   "builder": "@angular-devkit/build-angular:protractor",
   "options": {
       ...
   },
   "configurations": {
-	"production": {
-		...
-	},
+	  "production": {
+		  ...
+	  },
     "es5": {
-      "devServerTarget": "app:serve:es5"
+      "devServerTarget": "<app-name>:serve:es5"
     }
   }
 },
 
 </code-example>
 
-You can then run the e2e's with this configuration
+You can then run the `ng e2e` command with this configuration. Make sure to replace `<app-name>` (in `"<app-name>:serve:es5"`) with the actual name of the app, as it appears under `projects` in `angular.json`. For example, if your app name is `myAngularApp` the config will become `"devServerTarget": "myAngularApp:serve:es5"`.
 
 <code-example language="none" class="code-shell">
 

@@ -1,7 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
-load("//packages/bazel:index.bzl", "protractor_web_test_suite")
 load("//tools:defaults.bzl", "ng_module", "ts_library")
+load("@npm_bazel_protractor//:index.bzl", "protractor_web_test_suite")
 load("@npm_bazel_typescript//:index.bzl", "ts_devserver")
 
 ng_module(
@@ -41,18 +41,17 @@ ts_devserver(
     index_html = "//packages/examples:index.html",
     port = 4200,
     scripts = [
-        "@npm//node_modules/tslib:tslib.js",
+        "@npm//:node_modules/tslib/tslib.js",
         "//tools/rxjs:rxjs_umd_modules",
     ],
     static_files = [
-        "@npm//node_modules/zone.js:dist/zone.js",
+        "@npm//:node_modules/zone.js/dist/zone.js",
     ],
     deps = [":common_examples"],
 )
 
 protractor_web_test_suite(
     name = "protractor_tests",
-    data = ["//packages/bazel/src/protractor/utils"],
     on_prepare = ":start-server.js",
     server = ":devserver",
     deps = [

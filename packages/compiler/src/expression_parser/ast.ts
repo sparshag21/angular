@@ -203,13 +203,28 @@ export class FunctionCall extends AST {
   }
 }
 
+/**
+ * Records the absolute position of a text span in a source file, where `start` and `end` are the
+ * starting and ending byte offsets, respectively, of the text span in a source file.
+ */
+export class AbsoluteSourceSpan {
+  constructor(public start: number, public end: number) {}
+}
+
 export class ASTWithSource extends AST {
+  public sourceSpan: AbsoluteSourceSpan;
   constructor(
-      public ast: AST, public source: string|null, public location: string,
+      public ast: AST, public source: string|null, public location: string, absoluteOffset: number,
       public errors: ParserError[]) {
     super(new ParseSpan(0, source == null ? 0 : source.length));
+    this.sourceSpan = new AbsoluteSourceSpan(absoluteOffset, absoluteOffset + this.span.end);
   }
-  visit(visitor: AstVisitor, context: any = null): any { return this.ast.visit(visitor, context); }
+  visit(visitor: AstVisitor, context: any = null): any {
+    if (visitor.visitASTWithSource) {
+      return visitor.visitASTWithSource(this, context);
+    }
+    return this.ast.visit(visitor, context);
+  }
   toString(): string { return `${this.source} in ${this.location}`; }
 }
 
@@ -240,6 +255,7 @@ export interface AstVisitor {
   visitQuote(ast: Quote, context: any): any;
   visitSafeMethodCall(ast: SafeMethodCall, context: any): any;
   visitSafePropertyRead(ast: SafePropertyRead, context: any): any;
+  visitASTWithSource?(ast: ASTWithSource, context: any): any;
   visit?(ast: AST, context?: any): any;
 }
 
@@ -420,7 +436,7 @@ export class AstTransformer implements AstVisitor {
   }
 
   visitAll(asts: any[]): any[] {
-    const res = new Array(asts.length);
+    const res = [];
     for (let i = 0; i < asts.length; ++i) {
       res[i] = asts[i].visit(this);
     }
@@ -582,7 +598,7 @@ export class AstMemoryEfficientTransformer implements AstVisitor {
   }
 
   visitAll(asts: any[]): any[] {
-    const res = new Array(asts.length);
+    const res = [];
     let modified = false;
     for (let i = 0; i < asts.length; ++i) {
       const original = asts[i];
@@ -675,7 +691,7 @@ export class ParsedProperty {
 
   constructor(
       public name: string, public expression: ASTWithSource, public type: ParsedPropertyType,
-      public sourceSpan: ParseSourceSpan) {
+      public sourceSpan: ParseSourceSpan, public valueSpan?: ParseSourceSpan) {
     this.isLiteral = this.type === ParsedPropertyType.LITERAL_ATTR;
     this.isAnimation = this.type === ParsedPropertyType.ANIMATION;
   }
@@ -723,5 +739,6 @@ export const enum BindingType {
 export class BoundElementProperty {
   constructor(
       public name: string, public type: BindingType, public securityContext: SecurityContext,
-      public value: AST, public unit: string|null, public sourceSpan: ParseSourceSpan) {}
+      public value: AST, public unit: string|null, public sourceSpan: ParseSourceSpan,
+      public valueSpan?: ParseSourceSpan) {}
 }

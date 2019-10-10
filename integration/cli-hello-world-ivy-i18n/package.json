@@ -1,0 +1,69 @@
+{
+  "name": "cli-hello-world-ivy-compat",
+  "version": "0.0.0",
+  "license": "MIT",
+  "scripts": {
+    "build": "ng build --prod --progress=false",
+    "e2e": "ng e2e --webdriver-update=false",
+    "lint": "ng lint",
+    "ng": "ng",
+    "postinstall": "webdriver-manager update --gecko=false --standalone=false $CI_CHROMEDRIVER_VERSION_ARG",
+    "start": "ng serve",
+    "pretest": "ng version",
+    "test": "ng test --progress=false --watch=false && yarn e2e --configuration=ci && yarn e2e --configuration=ci-production && yarn translated:test && yarn translated:legacy:test",
+    "translate": "localize-translate -r \"dist/\" -s \"**/*\" -t \"src/locales/messages.*\" -o \"tmp/translations/{{LOCALE}}\"",
+    
+    "translated:test": "yarn build && yarn translate && yarn translated:fr:e2e && yarn translated:de:e2e",
+    
+    "translated:fr:serve": "serve tmp/translations/fr --listen 4200",
+    "translated:fr:e2e": "npm-run-all -p -r translated:fr:serve \"ng e2e --configuration=translated-fr --webdriver-update=false\"",
+    
+    "translated:de:serve": "serve tmp/translations/de --listen 4200",
+    "translated:de:e2e": "npm-run-all -p -r translated:de:serve \"ng e2e --configuration=translated-de --webdriver-update=false\"",
+    
+    "translated:legacy:test": "yarn translated:legacy:extract-and-update && ng build --configuration=translated-legacy && yarn translated:legacy:translate && yarn translated:legacy:e2e",
+    "translated:legacy:extract-and-update": "ng xi18n && sed -i.bak -e 's/source>/target>'/ -e 's/Hello/Bonjour/' -e 's/source-language=\"en\"/source-language=\"en\" target-language=\"legacy\"/' tmp/legacy-locales/messages.legacy.xlf",
+    "translated:legacy:translate": "localize-translate -r \"dist/\" -s \"**/*\" -t \"tmp/legacy-locales/messages.legacy.xlf\" -o \"tmp/translations/{{LOCALE}}\"",
+    "translated:legacy:serve": "serve tmp/translations/legacy --listen 4200",
+    "translated:legacy:e2e": "npm-run-all -p -r translated:legacy:serve \"ng e2e --configuration=translated-legacy --webdriver-update=false\""
+  },
+  "private": true,
+  "dependencies": {
+    "@angular/animations": "file:../../dist/packages-dist/animations",
+    "@angular/common": "file:../../dist/packages-dist/common",
+    "@angular/compiler": "file:../../dist/packages-dist/compiler",
+    "@angular/core": "file:../../dist/packages-dist/core",
+    "@angular/forms": "file:../../dist/packages-dist/forms",
+    "@angular/localize": "file:../../dist/packages-dist/localize",
+    "@angular/platform-browser": "file:../../dist/packages-dist/platform-browser",
+    "@angular/platform-browser-dynamic": "file:../../dist/packages-dist/platform-browser-dynamic",
+    "@angular/router": "file:../../dist/packages-dist/router",
+    "core-js": "file:../../node_modules/core-js",
+    "npm-run-all": "^4.1.5",
+    "rxjs": "file:../../node_modules/rxjs",
+    "serve": "^11.2.0",
+    "tslib": "^1.9.3",
+    "zone.js": "file:../../node_modules/zone.js"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "^0.900.0-next.8",
+    "@angular/cli": "9.0.0-next.8",
+    "@angular/compiler-cli": "file:../../dist/packages-dist/compiler-cli",
+    "@angular/language-service": "file:../../dist/packages-dist/language-service",
+    "@types/jasmine": "~2.8.8",
+    "@types/jasminewd2": "~2.0.3",
+    "@types/node": "~8.9.4",
+    "codelyzer": "~4.5.0",
+    "jasmine-core": "~2.99.1",
+    "jasmine-spec-reporter": "~4.2.1",
+    "karma": "~3.1.1",
+    "karma-chrome-launcher": "~2.2.0",
+    "karma-coverage-istanbul-reporter": "~2.0.1",
+    "karma-jasmine": "~1.1.2",
+    "karma-jasmine-html-reporter": "^0.2.2",
+    "protractor": "file:../../node_modules/protractor",
+    "ts-node": "~7.0.0",
+    "tslint": "~5.18.0",
+    "typescript": "file:../../node_modules/typescript"
+  }
+}

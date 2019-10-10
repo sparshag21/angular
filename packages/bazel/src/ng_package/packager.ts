@@ -109,7 +109,7 @@ function main(args: string[]): number {
    * @param inputPath Path to the file in the input tree.
    * @param fileContent Content of the file.
    */
-  function writeFileFromInputPath(inputPath: string, fileContent: string) {
+  function writeFileFromInputPath(inputPath: string, fileContent: string | Buffer) {
     // We want the relative path from the given file to its ancestor "root" directory.
     // This root depends on whether the file lives in the source tree (srcDir) as a basic file
     // input to ng_package, the bin output tree (binDir) as the output of another rule, or
@@ -127,7 +127,7 @@ function main(args: string[]): number {
 
     // Always ensure that the target directory exists.
     shx.mkdir('-p', path.dirname(outputPath));
-    fs.writeFileSync(outputPath, fileContent, 'utf-8');
+    fs.writeFileSync(outputPath, fileContent);
   }
 
   /**
@@ -135,7 +135,7 @@ function main(args: string[]): number {
    * @param inputPath a path relative to the binDir, typically from a file in the deps[]
    */
   function copyFileFromInputPath(inputPath: string) {
-    writeFileFromInputPath(inputPath, fs.readFileSync(inputPath, 'utf-8'));
+    writeFileFromInputPath(inputPath, fs.readFileSync(inputPath));
   }
 
   /**
@@ -178,9 +178,14 @@ function main(args: string[]): number {
     moduleFiles['esm5_index'] = path.join(binDir, 'esm5', relative);
     moduleFiles['esm2015_index'] = path.join(binDir, 'esm2015', relative);
 
+    // Metadata file is optional as entry-points can be also built
+    // with the "ts_library" rule.
     const metadataFile = moduleFiles['metadata'];
-    const typingsOutFile = moduleFiles['typings'];
+    if (!metadataFile) {
+      return;
+    }
 
+    const typingsOutFile = moduleFiles['typings'];
     // We only support all modules within a package to be dts bundled
     // ie: if @angular/common/http has flat dts, so should @angular/common
     if (dtsBundles.length) {
@@ -220,7 +225,7 @@ function main(args: string[]): number {
     // Modify package.json files as necessary for publishing
     if (path.basename(src) === 'package.json') {
       const packageJson = JSON.parse(content);
-      content = amendPackageJson(src, packageJson);
+      content = amendPackageJson(src, packageJson, false);
 
       const packageName = packageJson['name'];
       packagesWithExistingPackageJson.add(packageName);
@@ -240,8 +245,13 @@ function main(args: string[]): number {
     const entryPointName = entryPointPackageName.substr(rootPackageName.length + 1);
     if (!entryPointName) return;
 
-    createMetadataReexportFile(
-        entryPointName, modulesManifest[entryPointPackageName]['metadata'], entryPointPackageName);
+    const metadataFilePath = modulesManifest[entryPointPackageName]['metadata'];
+    if (metadataFilePath) {
+      createMetadataReexportFile(
+          entryPointName, modulesManifest[entryPointPackageName]['metadata'],
+          entryPointPackageName);
+    }
+
     createTypingsReexportFile(
         entryPointName, licenseBanner, modulesManifest[entryPointPackageName]['typings']);
 
@@ -291,11 +301,19 @@ function main(args: string[]): number {
    *
    * @param packageJson The path to the package.json file.
    * @param parsedPackage Parsed package.json content
+   * @param isGeneratedPackageJson Whether the passed package.json has been generated.
    */
-  function amendPackageJson(packageJson: string, parsedPackage: {[key: string]: string}) {
+  function amendPackageJson(
+      packageJson: string, parsedPackage: {[key: string]: string},
+      isGeneratedPackageJson: boolean) {
     const packageName = parsedPackage['name'];
-    const moduleFiles = modulesManifest[packageName];
-    if (!moduleFiles) {
+    const moduleData = modulesManifest[packageName];
+
+    // We don't want to modify the "package.json" if we guessed the entry-point
+    // paths and there is a custom "package.json" for that package already. Module
+    // data will be only undefined if the package name comes from a non-generated
+    // "package.json". In that case we want to leave the file untouched as well.
+    if (!moduleData || moduleData.guessedPaths && !isGeneratedPackageJson) {
       // Ideally we should throw here, as we got an entry point that doesn't
       // have flat module metadata / bundle index, so it may have been an
       // ng_module that's missing a module_name attribute.
@@ -316,9 +334,9 @@ function main(args: string[]): number {
     parsedPackage['fesm5'] = getBundleName(packageName, 'fesm5');
     parsedPackage['fesm2015'] = getBundleName(packageName, 'fesm2015');
 
-    parsedPackage['esm5'] = srcDirRelative(packageJson, moduleFiles['esm5_index']);
-    parsedPackage['esm2015'] = srcDirRelative(packageJson, moduleFiles['esm2015_index']);
-    parsedPackage['typings'] = srcDirRelative(packageJson, moduleFiles['typings']);
+    parsedPackage['esm5'] = srcDirRelative(packageJson, moduleData['esm5_index']);
+    parsedPackage['esm2015'] = srcDirRelative(packageJson, moduleData['esm2015_index']);
+    parsedPackage['typings'] = srcDirRelative(packageJson, moduleData['typings']);
 
     // For now, we point the primary entry points at the fesm files, because of Webpack
     // performance issues with a large number of individual files.
@@ -335,7 +353,7 @@ function main(args: string[]): number {
     const parts = packageName.split('/');
     // Remove the scoped package part, like @angular if present
     const nameParts = packageName.startsWith('@') ? parts.splice(1) : parts;
-    const relativePath = Array(nameParts.length - 1).fill('..').join('/') || '.';
+    const relativePath = newArray(nameParts.length - 1, '..').join('/') || '.';
     let basename: string;
     if (dir === 'bundles') {
       basename = nameParts.join('-') + '.umd';
@@ -382,7 +400,7 @@ export * from '${srcDirRelative(inputPath, typingsFile.replace(/\.d\.tsx?$/, '')
    */
   function createEntryPointPackageJson(dir: string, entryPointPackageName: string) {
     const pkgJson = path.join(srcDir, dir, 'package.json');
-    const content = amendPackageJson(pkgJson, {name: entryPointPackageName});
+    const content = amendPackageJson(pkgJson, {name: entryPointPackageName}, true);
     writeFileFromInputPath(pkgJson, content);
   }
 
@@ -434,4 +452,14 @@ export * from '${srcDirRelative(inputPath, typingsFile.replace(/\.d\.tsx?$/, '')
 
 if (require.main === module) {
   process.exitCode = main(process.argv.slice(2));
+}
+
+export function newArray<T = any>(size: number): T[];
+export function newArray<T>(size: number, value: T): T[];
+export function newArray<T>(size: number, value?: T): T[] {
+  const list: T[] = [];
+  for (let i = 0; i < size; i++) {
+    list.push(value !);
+  }
+  return list;
 }

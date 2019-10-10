@@ -267,7 +267,7 @@ function forkInnerZoneWithAngularBehavior(zone: NgZonePrivate) {
 
 
     onInvoke: (delegate: ZoneDelegate, current: Zone, target: Zone, callback: Function,
-               applyThis: any, applyArgs: any[], source: string): any => {
+               applyThis: any, applyArgs?: any[], source?: string): any => {
       try {
         onEnter(zone);
         return delegate.invoke(target, callback, applyThis, applyArgs, source);
@@ -325,11 +325,17 @@ export class NoopNgZone implements NgZone {
   readonly onStable: EventEmitter<any> = new EventEmitter();
   readonly onError: EventEmitter<any> = new EventEmitter();
 
-  run(fn: () => any): any { return fn(); }
+  run(fn: (...args: any[]) => any, applyThis?: any, applyArgs?: any): any {
+    return fn.apply(applyThis, applyArgs);
+  }
 
-  runGuarded(fn: () => any): any { return fn(); }
+  runGuarded(fn: (...args: any[]) => any, applyThis?: any, applyArgs?: any): any {
+    return fn.apply(applyThis, applyArgs);
+  }
 
-  runOutsideAngular(fn: () => any): any { return fn(); }
+  runOutsideAngular(fn: (...args: any[]) => any): any { return fn(); }
 
-  runTask<T>(fn: () => any): any { return fn(); }
+  runTask(fn: (...args: any[]) => any, applyThis?: any, applyArgs?: any, name?: string): any {
+    return fn.apply(applyThis, applyArgs);
+  }
 }

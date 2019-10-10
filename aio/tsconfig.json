@@ -7,7 +7,6 @@
     "declaration": false,
     "module": "esnext",
     "moduleResolution": "node",
-    "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "importHelpers": true,
     "target": "es2015",
@@ -32,5 +31,11 @@
     "out-tsc",
     "scripts",
     "tools"
-  ]
+  ],
+  "angularCompilerOptions": {
+    "disableTypeScriptVersionCheck": true,
+    // TODO: Fix template type errors and enable.
+    // "fullTemplateTypeCheck": true,
+    "strictInjectionParameters": true
+  }
 }

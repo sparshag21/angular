@@ -22,13 +22,13 @@ const trim = (input: string): string => input.replace(/\s+/g, ' ').trim();
 const varRegExp = (name: string): RegExp => new RegExp(`var \\w+ = \\[\"${name}\"\\];`);
 
 const viewQueryRegExp = (descend: boolean, ref?: string): RegExp => {
-  const maybeRef = ref ? `${ref}` : `null`;
-  return new RegExp(`i0\\.ɵɵviewQuery\\(\\w+, ${descend}, ${maybeRef}\\)`);
+  const maybeRef = ref ? `, ${ref}` : ``;
+  return new RegExp(`i0\\.ɵɵviewQuery\\(\\w+, ${descend}${maybeRef}\\)`);
 };
 
 const contentQueryRegExp = (predicate: string, descend: boolean, ref?: string): RegExp => {
-  const maybeRef = ref ? `${ref}` : `null`;
-  return new RegExp(`i0\\.ɵɵcontentQuery\\(dirIndex, ${predicate}, ${descend}, ${maybeRef}\\)`);
+  const maybeRef = ref ? `, ${ref}` : ``;
+  return new RegExp(`i0\\.ɵɵcontentQuery\\(dirIndex, ${predicate}, ${descend}${maybeRef}\\)`);
 };
 
 const setClassMetadataRegExp = (expectedType: string): RegExp =>
@@ -67,6 +67,8 @@ runInEachFileSystem(os => {
       const dtsContents = env.getContents('test.d.ts');
       expect(dtsContents).toContain('static ngInjectableDef: i0.ɵɵInjectableDef<Dep>;');
       expect(dtsContents).toContain('static ngInjectableDef: i0.ɵɵInjectableDef<Service>;');
+      expect(dtsContents).toContain('static ngFactoryDef: i0.ɵɵFactoryDef<Dep>;');
+      expect(dtsContents).toContain('static ngFactoryDef: i0.ɵɵFactoryDef<Service>;');
     });
 
     it('should compile Injectables with a generic service', () => {
@@ -83,6 +85,7 @@ runInEachFileSystem(os => {
       const jsContents = env.getContents('test.js');
       expect(jsContents).toContain('Store.ngInjectableDef =');
       const dtsContents = env.getContents('test.d.ts');
+      expect(dtsContents).toContain('static ngFactoryDef: i0.ɵɵFactoryDef<Store<any>>;');
       expect(dtsContents).toContain('static ngInjectableDef: i0.ɵɵInjectableDef<Store<any>>;');
     });
 
@@ -106,11 +109,15 @@ runInEachFileSystem(os => {
       expect(jsContents).toContain('Dep.ngInjectableDef =');
       expect(jsContents).toContain('Service.ngInjectableDef =');
       expect(jsContents)
-          .toContain('return new (t || Service)(i0.ɵɵinject(Dep)); }, providedIn: \'root\' });');
+          .toContain(
+              'Service.ngFactoryDef = function Service_Factory(t) { return new (t || Service)(i0.ɵɵinject(Dep)); };');
+      expect(jsContents).toContain('providedIn: \'root\' })');
       expect(jsContents).not.toContain('__decorate');
       const dtsContents = env.getContents('test.d.ts');
       expect(dtsContents).toContain('static ngInjectableDef: i0.ɵɵInjectableDef<Dep>;');
       expect(dtsContents).toContain('static ngInjectableDef: i0.ɵɵInjectableDef<Service>;');
+      expect(dtsContents).toContain('static ngFactoryDef: i0.ɵɵFactoryDef<Dep>;');
+      expect(dtsContents).toContain('static ngFactoryDef: i0.ɵɵFactoryDef<Service>;');
     });
 
     it('should compile Injectables with providedIn and factory without errors', () => {
@@ -128,13 +135,14 @@ runInEachFileSystem(os => {
 
       const jsContents = env.getContents('test.js');
       expect(jsContents).toContain('Service.ngInjectableDef =');
-      expect(jsContents).toContain('(r = new t());');
-      expect(jsContents).toContain('(r = (function () { return new Service(); })());');
-      expect(jsContents).toContain('factory: function Service_Factory(t) { var r = null; if (t) {');
-      expect(jsContents).toContain('return r; }, providedIn: \'root\' });');
+      expect(jsContents)
+          .toContain('factory: function () { return (function () { return new Service(); })(); }');
+      expect(jsContents).toContain('Service_Factory(t) { return new (t || Service)(); }');
+      expect(jsContents).toContain(', providedIn: \'root\' });');
       expect(jsContents).not.toContain('__decorate');
       const dtsContents = env.getContents('test.d.ts');
       expect(dtsContents).toContain('static ngInjectableDef: i0.ɵɵInjectableDef<Service>;');
+      expect(dtsContents).toContain('static ngFactoryDef: i0.ɵɵFactoryDef<Service>;');
     });
 
     it('should compile Injectables with providedIn and factory with deps without errors', () => {
@@ -156,13 +164,14 @@ runInEachFileSystem(os => {
       const jsContents = env.getContents('test.js');
       expect(jsContents).toContain('Service.ngInjectableDef =');
       expect(jsContents).toContain('factory: function Service_Factory(t) { var r = null; if (t) {');
-      expect(jsContents).toContain('(r = new t(i0.ɵɵinject(Dep)));');
+      expect(jsContents).toContain('return new (t || Service)(i0.ɵɵinject(Dep));');
       expect(jsContents)
           .toContain('(r = (function (dep) { return new Service(dep); })(i0.ɵɵinject(Dep)));');
       expect(jsContents).toContain('return r; }, providedIn: \'root\' });');
       expect(jsContents).not.toContain('__decorate');
       const dtsContents = env.getContents('test.d.ts');
       expect(dtsContents).toContain('static ngInjectableDef: i0.ɵɵInjectableDef<Service>;');
+      expect(dtsContents).toContain('static ngFactoryDef: i0.ɵɵFactoryDef<Service>;');
     });
 
     it('should compile @Injectable with an @Optional dependency', () => {
@@ -197,12 +206,14 @@ runInEachFileSystem(os => {
 
       const jsContents = env.getContents('test.js');
       expect(jsContents).toContain('TestCmp.ngComponentDef = i0.ɵɵdefineComponent');
+      expect(jsContents).toContain('TestCmp.ngFactoryDef = function');
       expect(jsContents).not.toContain('__decorate');
 
       const dtsContents = env.getContents('test.d.ts');
       expect(dtsContents)
           .toContain(
               'static ngComponentDef: i0.ɵɵComponentDefWithMeta<TestCmp, "test-cmp", never, {}, {}, never>');
+      expect(dtsContents).toContain('static ngFactoryDef: i0.ɵɵFactoryDef<TestCmp>');
     });
 
     it('should compile Components (dynamic inline template) without errors', () => {
@@ -220,12 +231,15 @@ runInEachFileSystem(os => {
 
       const jsContents = env.getContents('test.js');
       expect(jsContents).toContain('TestCmp.ngComponentDef = i0.ɵɵdefineComponent');
+      expect(jsContents).toContain('TestCmp.ngFactoryDef = function');
       expect(jsContents).not.toContain('__decorate');
 
       const dtsContents = env.getContents('test.d.ts');
+
       expect(dtsContents)
           .toContain(
               'static ngComponentDef: i0.ɵɵComponentDefWithMeta<TestCmp, "test-cmp", never, {}, {}, never>');
+      expect(dtsContents).toContain('static ngFactoryDef: i0.ɵɵFactoryDef<TestCmp>');
     });
 
     it('should compile Components (function call inline template) without errors', () => {
@@ -246,12 +260,14 @@ runInEachFileSystem(os => {
 
       const jsContents = env.getContents('test.js');
       expect(jsContents).toContain('TestCmp.ngComponentDef = i0.ɵɵdefineComponent');
+      expect(jsContents).toContain('TestCmp.ngFactoryDef = function');
       expect(jsContents).not.toContain('__decorate');
 
       const dtsContents = env.getContents('test.d.ts');
       expect(dtsContents)
           .toContain(
               'static ngComponentDef: i0.ɵɵComponentDefWithMeta<TestCmp, "test-cmp", never, {}, {}, never>');
+      expect(dtsContents).toContain('static ngFactoryDef: i0.ɵɵFactoryDef<TestCmp>');
     });
 
     it('should compile Components (external template) without errors', () => {
@@ -385,6 +401,25 @@ runInEachFileSystem(os => {
       expect(jsContents).toContain('Hello World');
     });
 
+    it('should compile Components with an absolute templateUrl in a different rootDir', () => {
+      env.tsconfig({}, ['./extraRootDir']);
+      env.write('extraRootDir/test.html', '<p>Hello World</p>');
+      env.write('test.ts', `
+        import {Component} from '@angular/core';
+
+        @Component({
+          selector: 'test-cmp',
+          templateUrl: '/test.html',
+        })
+        export class TestCmp {}
+    `);
+
+      env.driveMain();
+
+      const jsContents = env.getContents('test.js');
+      expect(jsContents).toContain('Hello World');
+    });
+
     it('should compile components with styleUrls', () => {
       env.write('test.ts', `
         import {Component} from '@angular/core';
@@ -421,6 +456,24 @@ runInEachFileSystem(os => {
 
       const jsContents = env.getContents('test.js');
       expect(jsContents).toContain('background-color: blue');
+    });
+
+    it('should include generic type for ngBaseDef declarations', () => {
+      env.write('test.ts', `
+        import {Component, Input, NgModule} from '@angular/core';
+
+        export class TestBase {
+          @Input() input: any;
+        }
+    `);
+
+      env.driveMain();
+
+      const jsContents = env.getContents('test.js');
+      expect(jsContents).toContain('i0.ɵɵdefineBase({ inputs: { input: "input" } });');
+
+      const dtsContents = env.getContents('test.d.ts');
+      expect(dtsContents).toContain('static ngBaseDef: i0.ɵɵBaseDef<TestBase>');
     });
 
     it('should compile NgModules without errors', () => {
@@ -843,10 +896,13 @@ runInEachFileSystem(os => {
 
       expect(jsContents)
           .toContain(
-              'TestPipe.ngPipeDef = i0.ɵɵdefinePipe({ name: "test-pipe", type: TestPipe, ' +
-              'factory: function TestPipe_Factory(t) { return new (t || TestPipe)(); }, pure: false })');
+              'TestPipe.ngPipeDef = i0.ɵɵdefinePipe({ name: "test-pipe", type: TestPipe, pure: false })');
+      expect(jsContents)
+          .toContain(
+              'TestPipe.ngFactoryDef = function TestPipe_Factory(t) { return new (t || TestPipe)(); }');
       expect(dtsContents)
           .toContain('static ngPipeDef: i0.ɵɵPipeDefWithMeta<TestPipe, "test-pipe">;');
+      expect(dtsContents).toContain('static ngFactoryDef: i0.ɵɵFactoryDef<TestPipe>;');
     });
 
     it('should compile pure Pipes without errors', () => {
@@ -866,10 +922,13 @@ runInEachFileSystem(os => {
 
       expect(jsContents)
           .toContain(
-              'TestPipe.ngPipeDef = i0.ɵɵdefinePipe({ name: "test-pipe", type: TestPipe, ' +
-              'factory: function TestPipe_Factory(t) { return new (t || TestPipe)(); }, pure: true })');
+              'TestPipe.ngPipeDef = i0.ɵɵdefinePipe({ name: "test-pipe", type: TestPipe, pure: true })');
+      expect(jsContents)
+          .toContain(
+              'TestPipe.ngFactoryDef = function TestPipe_Factory(t) { return new (t || TestPipe)(); }');
       expect(dtsContents)
           .toContain('static ngPipeDef: i0.ɵɵPipeDefWithMeta<TestPipe, "test-pipe">;');
+      expect(dtsContents).toContain('static ngFactoryDef: i0.ɵɵFactoryDef<TestPipe>;');
     });
 
     it('should compile Pipes with dependencies', () => {
@@ -910,6 +969,7 @@ runInEachFileSystem(os => {
       const dtsContents = env.getContents('test.d.ts');
       expect(dtsContents)
           .toContain('static ngPipeDef: i0.ɵɵPipeDefWithMeta<TestPipe<any>, "test-pipe">;');
+      expect(dtsContents).toContain('static ngFactoryDef: i0.ɵɵFactoryDef<TestPipe<any>>;');
     });
 
     it('should include @Pipes in @NgModule scopes', () => {
@@ -971,19 +1031,43 @@ runInEachFileSystem(os => {
         expect(jsContents).toContain('selectors: [["ng-component"]]');
       });
 
-      it('should throw if selector is missing in Directive decorator params', () => {
-        env.write('test.ts', `
-        import {Directive} from '@angular/core';
+      it('should allow directives with no selector that are not in NgModules', () => {
+        env.write('main.ts', `
+          import {Directive} from '@angular/core';
 
-        @Directive({
-          inputs: ['a', 'b']
-        })
-        export class TestDir {}
-      `);
+          @Directive({})
+          export class BaseDir {}
 
+          @Directive({})
+          export abstract class AbstractBaseDir {}
+
+          @Directive()
+          export abstract class EmptyDir {}
+
+          @Directive({
+            inputs: ['a', 'b']
+          })
+          export class TestDirWithInputs {}
+        `);
+        const errors = env.driveDiagnostics();
+        expect(errors.length).toBe(0);
+      });
+
+      it('should not allow directives with no selector that are in NgModules', () => {
+        env.write('main.ts', `
+          import {Directive, NgModule} from '@angular/core';
+
+          @Directive({})
+          export class BaseDir {}
+
+          @NgModule({
+            declarations: [BaseDir],
+          })
+          export class MyModule {}
+        `);
         const errors = env.driveDiagnostics();
         expect(trim(errors[0].messageText as string))
-            .toContain('Directive TestDir has no selector, please add it!');
+            .toContain('Directive BaseDir has no selector, please add it!');
       });
 
       it('should throw if Directive selector is an empty string', () => {
@@ -1207,7 +1291,7 @@ runInEachFileSystem(os => {
 
              env.driveMain();
              const jsContents = env.getContents('test.js');
-             expect(jsContents).toMatch(/if \(t\).*throw new Error.* else .* '42'/ms);
+             expect(jsContents).toMatch(/function Test_Factory\(t\) { throw new Error\(/ms);
            });
       });
 
@@ -1215,33 +1299,35 @@ runInEachFileSystem(os => {
         it('should compile an @Injectable on a class with a non-injectable constructor', () => {
           env.tsconfig({strictInjectionParameters: false});
           env.write('test.ts', `
-          import {Injectable} from '@angular/core';
+            import {Injectable} from '@angular/core';
 
-          @Injectable()
-          export class Test {
-            constructor(private notInjectable: string) {}
-          }
-        `);
+            @Injectable()
+            export class Test {
+              constructor(private notInjectable: string) {}
+            }
+          `);
 
           env.driveMain();
           const jsContents = env.getContents('test.js');
-          expect(jsContents).toContain('factory: function Test_Factory(t) { throw new Error(');
+          expect(jsContents)
+              .toContain('Test.ngFactoryDef = function Test_Factory(t) { throw new Error(');
         });
 
         it('should compile an @Injectable provided in the root on a class with a non-injectable constructor',
            () => {
              env.tsconfig({strictInjectionParameters: false});
              env.write('test.ts', `
-            import {Injectable} from '@angular/core';
-            @Injectable({providedIn: 'root'})
-            export class Test {
-              constructor(private notInjectable: string) {}
-            }
-          `);
+              import {Injectable} from '@angular/core';
+              @Injectable({providedIn: 'root'})
+              export class Test {
+                constructor(private notInjectable: string) {}
+              }
+            `);
 
              env.driveMain();
              const jsContents = env.getContents('test.js');
-             expect(jsContents).toContain('factory: function Test_Factory(t) { throw new Error(');
+             expect(jsContents)
+                 .toContain('Test.ngFactoryDef = function Test_Factory(t) { throw new Error(');
            });
 
       });
@@ -1554,7 +1640,7 @@ runInEachFileSystem(os => {
       const jsContents = env.getContents('test.js');
       expect(jsContents)
           .toContain(
-              `factory: function FooCmp_Factory(t) { return new (t || FooCmp)(i0.ɵɵinjectAttribute("test"), i0.ɵɵdirectiveInject(i0.ChangeDetectorRef), i0.ɵɵdirectiveInject(i0.ElementRef), i0.ɵɵdirectiveInject(i0.Injector), i0.ɵɵdirectiveInject(i0.Renderer2), i0.ɵɵdirectiveInject(i0.TemplateRef), i0.ɵɵdirectiveInject(i0.ViewContainerRef)); }`);
+              `FooCmp.ngFactoryDef = function FooCmp_Factory(t) { return new (t || FooCmp)(i0.ɵɵinjectAttribute("test"), i0.ɵɵdirectiveInject(i0.ChangeDetectorRef), i0.ɵɵdirectiveInject(i0.ElementRef), i0.ɵɵdirectiveInject(i0.Injector), i0.ɵɵdirectiveInject(i0.Renderer2), i0.ɵɵdirectiveInject(i0.TemplateRef), i0.ɵɵdirectiveInject(i0.ViewContainerRef)); }`);
     });
 
     it('should generate queries for components', () => {
@@ -1617,7 +1703,7 @@ runInEachFileSystem(os => {
       // match `i0.ɵɵcontentQuery(dirIndex, _c1, true, TemplateRef)`
       expect(jsContents).toMatch(contentQueryRegExp('\\w+', true, 'TemplateRef'));
 
-      // match `i0.ɵɵviewQuery(_c2, true, null)`
+      // match `i0.ɵɵviewQuery(_c2, true)`
       // Note that while ViewQuery doesn't necessarily make sense on a directive, because it doesn't
       // have a view, we still need to handle it because a component could extend the directive.
       expect(jsContents).toMatch(viewQueryRegExp(true));
@@ -1788,17 +1874,15 @@ runInEachFileSystem(os => {
       const hostBindingsFn = `
       hostBindings: function FooCmp_HostBindings(rf, ctx, elIndex) {
         if (rf & 1) {
-          i0.ɵɵallocHostVars(2);
+          i0.ɵɵallocHostVars(3);
           i0.ɵɵlistener("click", function FooCmp_click_HostBindingHandler($event) { return ctx.onClick($event); });
           i0.ɵɵlistener("click", function FooCmp_click_HostBindingHandler($event) { return ctx.onBodyClick($event); }, false, i0.ɵɵresolveBody);
           i0.ɵɵlistener("change", function FooCmp_change_HostBindingHandler($event) { return ctx.onChange(ctx.arg1, ctx.arg2, ctx.arg3); });
-          i0.ɵɵstyling(_c0);
         }
         if (rf & 2) {
-          i0.ɵɵproperty("prop", ctx.bar, null, true);
+          i0.ɵɵhostProperty("prop", ctx.bar);
           i0.ɵɵattribute("hello", ctx.foo);
-          i0.ɵɵclassProp(0, ctx.someClass);
-          i0.ɵɵstylingApply();
+          i0.ɵɵclassProp("someclass", ctx.someClass);
         }
       }
     `;
@@ -1966,6 +2050,62 @@ runInEachFileSystem(os => {
       env.driveMain();
       const jsContents = env.getContents('test.js');
       expect(jsContents).not.toContain('MSG_EXTERNAL_');
+    });
+
+    it('should render legacy id when i18nLegacyMessageIdFormat config is set to xlf', () => {
+      env.tsconfig({i18nLegacyMessageIdFormat: 'xlf'});
+      env.write(`test.ts`, `
+        import {Component} from '@angular/core';
+        @Component({
+          selector: 'test',
+          template: '<div i18n>Some text</div>'
+        })
+        class FooCmp {}`);
+      env.driveMain();
+      const jsContents = env.getContents('test.js');
+      expect(jsContents).toContain(':@@5dbba0a3da8dff890e20cf76eb075d58900fbcd3:Some text');
+    });
+
+    it('should render legacy id when i18nLegacyMessageIdFormat config is set to xlf2', () => {
+      env.tsconfig({i18nLegacyMessageIdFormat: 'xlf2'});
+      env.write(`test.ts`, `
+        import {Component} from '@angular/core';
+        @Component({
+          selector: 'test',
+          template: '<div i18n>Some text</div>'
+        })
+        class FooCmp {}`);
+      env.driveMain();
+      const jsContents = env.getContents('test.js');
+      expect(jsContents).toContain(':@@8321000940098097247:Some text');
+    });
+
+    it('should render legacy id when i18nLegacyMessageIdFormat config is set to xmb', () => {
+      env.tsconfig({i18nLegacyMessageIdFormat: 'xmb'});
+      env.write(`test.ts`, `
+        import {Component} from '@angular/core';
+        @Component({
+          selector: 'test',
+          template: '<div i18n>Some text</div>'
+        })
+        class FooCmp {}`);
+      env.driveMain();
+      const jsContents = env.getContents('test.js');
+      expect(jsContents).toContain(':@@8321000940098097247:Some text');
+    });
+
+    it('should render custom id even if i18nLegacyMessageIdFormat config is set', () => {
+      env.tsconfig({i18nLegacyMessageIdFormat: 'xlf'});
+      env.write(`test.ts`, `
+        import {Component} from '@angular/core';
+        @Component({
+          selector: 'test',
+          template: '<div i18n="@@custom">Some text</div>'
+        })
+        class FooCmp {}`);
+      env.driveMain();
+      const jsContents = env.getContents('test.js');
+      expect(jsContents).toContain(':@@custom:Some text');
     });
 
     it('@Component\'s `interpolation` should override default interpolation config', () => {
@@ -2906,6 +3046,35 @@ runInEachFileSystem(os => {
         expect(env.getContents('./public-api/index.js')).toContain(`export * from '../test';`);
       });
 
+      it('should not throw if "flatModuleOutFile" is set to null', () => {
+        env.tsconfig({
+          'flatModuleOutFile': null,
+        });
+
+        env.write('test.ts', `export const SOME_EXPORT = 'some-export'`);
+        // The "driveMain" method automatically ensures that there is no
+        // exception and that the build succeeded.
+        env.driveMain();
+      });
+
+      it('should not throw or produce flat module index if "flatModuleOutFile" is set to ' +
+             'empty string',
+         () => {
+           env.tsconfig({
+             'flatModuleOutFile': '',
+           });
+
+           env.write('test.ts', `export const SOME_EXPORT = 'some-export'`);
+           // The "driveMain" method automatically ensures that there is no
+           // exception and that the build succeeded.
+           env.driveMain();
+           // Previously ngtsc incorrectly tried generating a flat module index
+           // file if the "flatModuleOutFile" was set to an empty string. ngtsc
+           // just wrote the bundle file with an empty filename (just extension).
+           env.assertDoesNotExist('.js');
+           env.assertDoesNotExist('.d.ts');
+         });
+
       it('should report an error when a flat module index is requested but no entrypoint can be determined',
          () => {
            env.tsconfig({'flatModuleOutFile': 'flat.js'});
@@ -2942,7 +3111,8 @@ runInEachFileSystem(os => {
                 'entrypoint.');
 
         // Verify that the error is for the correct class.
-        const id = expectTokenAtPosition(errors[0].file !, errors[0].start !, ts.isIdentifier);
+        const error = errors[0] as ts.Diagnostic;
+        const id = expectTokenAtPosition(error.file !, error.start !, ts.isIdentifier);
         expect(id.text).toBe('Dir');
         expect(ts.isClassDeclaration(id.parent)).toBe(true);
       });
@@ -3106,7 +3276,7 @@ runInEachFileSystem(os => {
           const fileoverview = `
         /**
          * @fileoverview added by tsickle
-         * @suppress {checkTypes,extraRequire,missingOverride,missingReturn,unusedPrivateMembers,uselessCode} checked by tsc
+         * @suppress {checkTypes,constantProperty,extraRequire,missingOverride,missingReturn,unusedPrivateMembers,uselessCode} checked by tsc
          */
       `;
           expect(trim(jsContents).startsWith(trim(fileoverview))).toBeTruthy();
@@ -3123,7 +3293,7 @@ runInEachFileSystem(os => {
           const fileoverview = `
         /**
          * @fileoverview added by tsickle
-         * @suppress {checkTypes,extraRequire,missingOverride,missingReturn,unusedPrivateMembers,uselessCode} checked by tsc
+         * @suppress {checkTypes,constantProperty,extraRequire,missingOverride,missingReturn,unusedPrivateMembers,uselessCode} checked by tsc
          */
       `;
           expect(trim(jsContents).startsWith(trim(fileoverview))).toBeTruthy();
@@ -3155,7 +3325,7 @@ runInEachFileSystem(os => {
          * @fileoverview Some Comp overview
          * @modName {some_comp}
          *
-         * @suppress {checkTypes,extraRequire,missingOverride,missingReturn,unusedPrivateMembers,uselessCode} checked by tsc
+         * @suppress {checkTypes,constantProperty,extraRequire,missingOverride,missingReturn,unusedPrivateMembers,uselessCode} checked by tsc
          */
       `;
           expect(trim(jsContents).startsWith(trim(fileoverview))).toBeTruthy();
@@ -3184,7 +3354,7 @@ runInEachFileSystem(os => {
          * @fileoverview Some Comp overview
          * @modName {some_comp}
          *
-         * @suppress {checkTypes,extraRequire,missingOverride,missingReturn,unusedPrivateMembers,uselessCode} checked by tsc
+         * @suppress {checkTypes,constantProperty,extraRequire,missingOverride,missingReturn,unusedPrivateMembers,uselessCode} checked by tsc
          */
       `;
              expect(trim(jsContents).startsWith(trim(fileoverview))).toBeTruthy();
@@ -3286,7 +3456,7 @@ runInEachFileSystem(os => {
             i0.ɵɵallocHostVars(6);
           }
           if (rf & 2) {
-            i0.ɵɵproperty("href", ctx.propHref, i0.ɵɵsanitizeUrlOrResourceUrl, true)("src", ctx.propSrc, i0.ɵɵsanitizeUrlOrResourceUrl, true)("action", ctx.propAction, i0.ɵɵsanitizeUrl, true)("profile", ctx.propProfile, i0.ɵɵsanitizeResourceUrl, true)("innerHTML", ctx.propInnerHTML, i0.ɵɵsanitizeHtml, true)("title", ctx.propSafeTitle, null, true);
+            i0.ɵɵhostProperty("href", ctx.propHref, i0.ɵɵsanitizeUrlOrResourceUrl)("src", ctx.propSrc, i0.ɵɵsanitizeUrlOrResourceUrl)("action", ctx.propAction, i0.ɵɵsanitizeUrl)("profile", ctx.propProfile, i0.ɵɵsanitizeResourceUrl)("innerHTML", ctx.propInnerHTML, i0.ɵɵsanitizeHtml)("title", ctx.propSafeTitle);
           }
         }
       `;
@@ -3321,7 +3491,7 @@ runInEachFileSystem(os => {
             i0.ɵɵallocHostVars(6);
           }
           if (rf & 2) {
-            i0.ɵɵproperty("src", ctx.srcProp, null, true)("href", ctx.hrefProp, null, true)("title", ctx.titleProp, null, true);
+            i0.ɵɵhostProperty("src", ctx.srcProp)("href", ctx.hrefProp)("title", ctx.titleProp);
             i0.ɵɵattribute("src", ctx.srcAttr)("href", ctx.hrefAttr)("title", ctx.titleAttr);
           }
         }

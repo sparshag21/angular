@@ -93,16 +93,16 @@ export type ResolveData = {
 /**
  *
  * A function that is called to resolve a collection of lazy-loaded routes.
- * 
+ *
  * Often this function will be implemented using an ES dynamic `import()` expression. For example:
- * 
+ *
  * ```
  * [{
  *   path: 'lazy',
  *   loadChildren: () => import('./lazy-route/lazy.module').then(mod => mod.LazyModule),
  * }];
  * ```
- * 
+ *
  * This function _must_ match the form above: an arrow function of the form
  * `() => import('...').then(mod => mod.MODULE)`.
  *
@@ -143,7 +143,8 @@ export type DeprecatedLoadChildren = string;
  * - `merge` : Merge new with current parameters.
  * - `preserve` : Preserve current parameters.
  *
- * @see `RouterLink#queryParamsHandling`.
+ * @see `NavigationExtras#queryParamsHandling`
+ * @see `RouterLink`
  * @publicApi
  */
 export type QueryParamsHandling = 'merge' | 'preserve' | '';
@@ -332,7 +333,7 @@ export type RunGuardsAndResolvers = 'pathParamsChange' | 'pathParamsOrQueryParam
  * and both of them require an ID parameter. You can accomplish this using a route
  * that does not specify a component at the top level.
  *
- * In the following example, 'ChildCmp' and 'AuxCmp' are siblings.
+ * In the following example, 'MainChild' and 'AuxChild' are siblings.
  * When navigating to 'parent/10/(a//aux:b)', the route instantiates
  * the main child and aux child components next to each other.
  * For this to work, the application component must have the primary and aux outlets defined.
@@ -371,17 +372,14 @@ export type RunGuardsAndResolvers = 'pathParamsChange' | 'pathParamsOrQueryParam
  * into multiple bundles and loading them on demand.
  * To use lazy loading, provide the `loadChildren` property  instead of the `children` property.
  *
- * Given the following example route, the router uses the registered
- * `NgModuleFactoryLoader` to fetch an NgModule associated with 'team'.
- * It then extracts the set of routes defined in that NgModule,
- * and transparently adds those routes to the main configuration.
+ * Given the following example route, the router will lazy load
+ * the associated module on demand using the browser native import system.
  *
  * ```
  * [{
- *   path: 'team/:id',
- *   component: Team,
- *   loadChildren: 'team'
- * }]
+ *   path: 'lazy',
+ *   loadChildren: () => import('./lazy-route/lazy.module').then(mod => mod.LazyModule),
+ * }];
  * ```
  *
  * @publicApi

@@ -11,7 +11,8 @@ import {absoluteFrom, getFileSystem} from '../../../src/ngtsc/file_system';
 import {TestFile, runInEachFileSystem} from '../../../src/ngtsc/file_system/testing';
 import {loadTestFiles} from '../../../test/helpers';
 import {Import, ImportManager} from '../../../src/ngtsc/translator';
-import {CompiledClass, DecorationAnalyzer} from '../../src/analysis/decoration_analyzer';
+import {DecorationAnalyzer} from '../../src/analysis/decoration_analyzer';
+import {CompiledClass} from '../../src/analysis/types';
 import {NgccReferencesRegistry} from '../../src/analysis/ngcc_references_registry';
 import {ModuleWithProvidersAnalyzer, ModuleWithProvidersInfo} from '../../src/analysis/module_with_providers_analyzer';
 import {PrivateDeclarationsAnalyzer, ExportInfo} from '../../src/analysis/private_declarations_analyzer';
@@ -60,8 +61,7 @@ function createTestRenderer(
   const fs = getFileSystem();
   const isCore = packageName === '@angular/core';
   const bundle = makeTestEntryPointBundle(
-      'test-package', 'es2015', 'esm2015', isCore, getRootFiles(files),
-      dtsFiles && getRootFiles(dtsFiles));
+      'test-package', 'esm2015', isCore, getRootFiles(files), dtsFiles && getRootFiles(dtsFiles));
   const typeChecker = bundle.src.program.getTypeChecker();
   const host = new Esm2015ReflectionHost(logger, isCore, typeChecker, bundle.dts);
   const referencesRegistry = new NgccReferencesRegistry(host);
@@ -119,7 +119,7 @@ runInEachFileSystem(() => {
       const typingsFile = result.find(f => f.path === _('/typings/file.d.ts')) !;
       expect(typingsFile.contents)
           .toContain(
-              'foo(x: number): number;\n    static ngDirectiveDef: ɵngcc0.ɵɵDirectiveDefWithMeta');
+              'foo(x: number): number;\n    static ngFactoryDef: ɵngcc0.ɵɵFactoryDef<A>;\n    static ngDirectiveDef: ɵngcc0.ɵɵDirectiveDefWithMeta');
     });
 
     it('should render imports into typings files', () => {

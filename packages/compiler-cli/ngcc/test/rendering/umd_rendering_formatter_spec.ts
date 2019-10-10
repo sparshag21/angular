@@ -25,7 +25,7 @@ function setup(file: TestFile) {
   loadTestFiles([file]);
   const fs = getFileSystem();
   const logger = new MockLogger();
-  const bundle = makeTestEntryPointBundle('test-package', 'esm5', 'esm5', false, [file.name]);
+  const bundle = makeTestEntryPointBundle('test-package', 'esm5', false, [file.name]);
   const src = bundle.src;
   const host = new UmdReflectionHost(logger, false, src.program, src.host);
   const referencesRegistry = new NgccReferencesRegistry(host);
@@ -50,9 +50,20 @@ runInEachFileSystem(() => {
     let _: typeof absoluteFrom;
     let PROGRAM: TestFile;
     let PROGRAM_DECORATE_HELPER: TestFile;
+    let PROGRAM_WITH_GLOBAL_INITIALIZER: TestFile;
 
     beforeEach(() => {
       _ = absoluteFrom;
+
+      PROGRAM_WITH_GLOBAL_INITIALIZER = {
+        name: _('/node_modules/test-package/some/file.js'),
+        contents: `
+        (function (global, factory) {
+          typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports,require('some-side-effect'),require('/local-dep'),require('@angular/core')) :
+          typeof define === 'function' && define.amd ? define('file', ['exports','some-side-effect','/local-dep','@angular/core'], factory) :
+          (global = global || self, factory(global.file,global.someSideEffect,global.localDep,global.ng.core));
+          }(this, (function (exports,someSideEffect,localDep,core) {'use strict'; })));`
+      };
 
       PROGRAM = {
         name: _('/node_modules/test-package/some/file.js'),
@@ -228,6 +239,22 @@ typeof define === 'function' && define.amd ? define('file', ['exports','/tslib',
                 `(factory(global.file,global.someSideEffect,global.localDep,global.ng.core,global.ng.core,global.ng.common));`);
       });
 
+      it('should append the given imports into the global initialization, if it has a global/self initializer',
+         () => {
+           const {renderer, program} = setup(PROGRAM_WITH_GLOBAL_INITIALIZER);
+           const file = getSourceFileOrError(program, _('/node_modules/test-package/some/file.js'));
+           const output = new MagicString(file.text);
+           renderer.addImports(
+               output,
+               [
+                 {specifier: '@angular/core', qualifier: 'i0'},
+                 {specifier: '@angular/common', qualifier: 'i1'}
+               ],
+               file);
+           expect(output.toString())
+               .toContain(
+                   `(global = global || self, factory(global.file,global.someSideEffect,global.localDep,global.ng.core,global.ng.core,global.ng.common));`);
+         });
       it('should append the given imports as parameters into the factory function definition',
          () => {
            const {renderer, program} = setup(PROGRAM);

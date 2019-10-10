@@ -15,7 +15,6 @@ load(
 )
 load(
     "@build_bazel_rules_nodejs//internal/common:node_module_info.bzl",
-    _NodeModuleInfo = "NodeModuleInfo",
     _NodeModuleSources = "NodeModuleSources",
     _collect_node_modules_aspect = "collect_node_modules_aspect",
 )
@@ -23,8 +22,11 @@ load(
     "@npm_bazel_typescript//internal:ts_config.bzl",
     _TsConfigInfo = "TsConfigInfo",
 )
+load(
+    "@build_bazel_rules_nodejs//:providers.bzl",
+    _transitive_js_ecma_script_module_info = "transitive_js_ecma_script_module_info",
+)
 
-NodeModuleInfo = _NodeModuleInfo
 NodeModuleSources = _NodeModuleSources
 collect_node_modules_aspect = _collect_node_modules_aspect
 
@@ -40,3 +42,4 @@ DEFAULT_NG_COMPILER = "@npm//@angular/bazel/bin:ngc-wrapped"
 DEFAULT_NG_XI18N = "@npm//@angular/bazel/bin:xi18n"
 FLAT_DTS_FILE_SUFFIX = ".bundle.d.ts"
 TsConfigInfo = _TsConfigInfo
+transitive_js_ecma_script_module_info = _transitive_js_ecma_script_module_info

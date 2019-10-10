@@ -6,26 +6,29 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {InjectFlags, InjectionToken} from '../di';
+import {isForwardRef, resolveForwardRef} from '../di/forward_ref';
+import {InjectionToken} from '../di/injection_token';
 import {Injector} from '../di/injector';
 import {injectRootLimpMode, setInjectImplementation} from '../di/injector_compatibility';
 import {getInjectableDef, getInjectorDef} from '../di/interface/defs';
+import {InjectFlags} from '../di/interface/injector';
 import {Type} from '../interface/type';
 import {assertDefined, assertEqual} from '../util/assert';
 
-import {getComponentDef, getDirectiveDef, getPipeDef} from './definition';
-import {NG_ELEMENT_ID} from './fields';
+import {getFactoryDef} from './definition';
+import {NG_ELEMENT_ID, NG_FACTORY_DEF} from './fields';
 import {DirectiveDef, FactoryFn} from './interfaces/definition';
 import {NO_PARENT_INJECTOR, NodeInjectorFactory, PARENT_INJECTOR, RelativeInjectorLocation, RelativeInjectorLocationFlags, TNODE, isFactory} from './interfaces/injector';
 import {AttributeMarker, TContainerNode, TElementContainerNode, TElementNode, TNode, TNodeFlags, TNodeProviderIndexes, TNodeType} from './interfaces/node';
+import {isComponentDef, isComponentHost} from './interfaces/type_checks';
 import {DECLARATION_VIEW, INJECTOR, LView, TData, TVIEW, TView, T_HOST} from './interfaces/view';
 import {assertNodeOfPossibleTypes} from './node_assert';
 import {getLView, getPreviousOrParentTNode, setTNodeAndViewData} from './state';
 import {isNameOnlyAttributeMarker} from './util/attrs_utils';
 import {getParentInjectorIndex, getParentInjectorView, hasParentInjector} from './util/injector_utils';
 import {stringifyForError} from './util/misc_utils';
+import {getInitialStylingValue} from './util/styling_utils';
 import {findComponentView} from './util/view_traversal_utils';
-import {isComponent, isComponentDef} from './util/view_utils';
 
 
 
@@ -149,10 +152,6 @@ export function getOrCreateNodeInjectorForNode(
     insertBloom(tView.data, tNode);  // foundation for node bloom
     insertBloom(hostView, null);     // foundation for cumulative bloom
     insertBloom(tView.blueprint, null);
-
-    ngDevMode && assertEqual(
-                     tNode.flags === 0 || tNode.flags === TNodeFlags.isComponent, true,
-                     'expected tNode.flags to not be initialized');
   }
 
   const parentLoc = getParentInjectorLocation(tNode, hostView);
@@ -230,8 +229,8 @@ export function getParentInjectorLocation(tNode: TNode, view: LView): RelativeIn
  * @param token The type or the injection token to be made public
  */
 export function diPublicInInjector(
-    injectorIndex: number, view: LView, token: InjectionToken<any>| Type<any>): void {
-  bloomAdd(injectorIndex, view[TVIEW], token);
+    injectorIndex: number, tView: TView, token: InjectionToken<any>| Type<any>): void {
+  bloomAdd(injectorIndex, tView, token);
 }
 
 /**
@@ -269,6 +268,13 @@ export function injectAttributeImpl(tNode: TNode, attrNameToInject: string): str
   ngDevMode && assertNodeOfPossibleTypes(
                    tNode, TNodeType.Container, TNodeType.Element, TNodeType.ElementContainer);
   ngDevMode && assertDefined(tNode, 'expecting tNode');
+  if (attrNameToInject === 'class') {
+    return getInitialStylingValue(tNode.classes);
+  }
+  if (attrNameToInject === 'style') {
+    return getInitialStylingValue(tNode.styles);
+  }
+
   const attrs = tNode.attrs;
   if (attrs) {
     const attrsLength = attrs.length;
@@ -289,22 +295,8 @@ export function injectAttributeImpl(tNode: TNode, attrNameToInject: string): str
       } else if (typeof value === 'number') {
         // Skip to the first value of the marked attribute.
         i++;
-        if (value === AttributeMarker.Classes && attrNameToInject === 'class') {
-          let accumulatedClasses = '';
-          while (i < attrsLength && typeof attrs[i] === 'string') {
-            accumulatedClasses += ' ' + attrs[i++];
-          }
-          return accumulatedClasses.trim();
-        } else if (value === AttributeMarker.Styles && attrNameToInject === 'style') {
-          let accumulatedStyles = '';
-          while (i < attrsLength && typeof attrs[i] === 'string') {
-            accumulatedStyles += `${attrs[i++]}: ${attrs[i++]}; `;
-          }
-          return accumulatedStyles.trim();
-        } else {
-          while (i < attrsLength && typeof attrs[i] === 'string') {
-            i++;
-          }
+        while (i < attrsLength && typeof attrs[i] === 'string') {
+          i++;
         }
       } else if (value === attrNameToInject) {
         return attrs[i + 1] as string;
@@ -468,7 +460,7 @@ function searchTokensOnInjector<T>(
       // - AND the injector set `includeViewProviders` to true (implying that the token can see
       // ViewProviders because it is the Component or a Service which itself was declared in
       // ViewProviders)
-      (isComponent(tNode) && includeViewProviders) :
+      (isComponentHost(tNode) && includeViewProviders) :
       // 2) `previousTView != null` which means that we are now walking across the parent nodes.
       // In such a case we are only allowed to look into the ViewProviders if:
       // - We just crossed from child View to Parent View `previousTView != currentTView`
@@ -556,7 +548,7 @@ export function getNodeInjectable(
     const saveLView = getLView();
     setTNodeAndViewData(tNode, lData);
     try {
-      value = lData[index] = factory.factory(null, tData, lData, tNode);
+      value = lData[index] = factory.factory(undefined, tData, lData, tNode);
     } finally {
       if (factory.injectImpl) setInjectImplementation(previousInjectImplementation);
       setIncludeViewProviders(previousIncludeViewProviders);
@@ -638,12 +630,20 @@ export class NodeInjector implements Injector {
  */
 export function ɵɵgetFactoryOf<T>(type: Type<any>): FactoryFn<T>|null {
   const typeAny = type as any;
-  const def = getComponentDef<T>(typeAny) || getDirectiveDef<T>(typeAny) ||
-      getPipeDef<T>(typeAny) || getInjectableDef<T>(typeAny) || getInjectorDef<T>(typeAny);
-  if (!def || def.factory === undefined) {
-    return null;
+
+  if (isForwardRef(type)) {
+    return (() => {
+      const factory = ɵɵgetFactoryOf<T>(resolveForwardRef(typeAny));
+      return factory ? factory() : null;
+    }) as any;
   }
-  return def.factory;
+
+  let factory = getFactoryDef<T>(typeAny);
+  if (factory === null) {
+    const injectorDef = getInjectorDef<T>(typeAny);
+    factory = injectorDef && injectorDef.factory;
+  }
+  return factory || null;
 }
 
 /**
@@ -651,7 +651,7 @@ export function ɵɵgetFactoryOf<T>(type: Type<any>): FactoryFn<T>|null {
  */
 export function ɵɵgetInheritedFactory<T>(type: Type<any>): (type: Type<T>) => T {
   const proto = Object.getPrototypeOf(type.prototype).constructor as Type<any>;
-  const factory = ɵɵgetFactoryOf<T>(proto);
+  const factory = (proto as any)[NG_FACTORY_DEF] || ɵɵgetFactoryOf<T>(proto);
   if (factory !== null) {
     return factory;
   } else {

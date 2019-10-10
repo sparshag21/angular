@@ -9,7 +9,7 @@ import {SanitizerFn} from '../interfaces/sanitization';
 import {getLView, getSelectedIndex} from '../state';
 import {NO_CHANGE} from '../tokens';
 
-import {ɵɵinterpolation1, ɵɵinterpolation2, ɵɵinterpolation3, ɵɵinterpolation4, ɵɵinterpolation5, ɵɵinterpolation6, ɵɵinterpolation7, ɵɵinterpolation8, ɵɵinterpolationV} from './interpolation';
+import {interpolation1, interpolation2, interpolation3, interpolation4, interpolation5, interpolation6, interpolation7, interpolation8, interpolationV} from './interpolation';
 import {TsickleIssue1009, elementAttributeInternal} from './shared';
 
 
@@ -41,13 +41,11 @@ import {TsickleIssue1009, elementAttributeInternal} from './shared';
 export function ɵɵattributeInterpolate1(
     attrName: string, prefix: string, v0: any, suffix: string, sanitizer?: SanitizerFn,
     namespace?: string): TsickleIssue1009 {
-  const index = getSelectedIndex();
   const lView = getLView();
-
-  // TODO(FW-1340): Refactor to remove the use of other instructions here.
-  const interpolatedValue = ɵɵinterpolation1(prefix, v0, suffix);
+  const interpolatedValue = interpolation1(lView, prefix, v0, suffix);
   if (interpolatedValue !== NO_CHANGE) {
-    elementAttributeInternal(index, attrName, interpolatedValue, lView, sanitizer, namespace);
+    elementAttributeInternal(
+        getSelectedIndex(), attrName, interpolatedValue, lView, sanitizer, namespace);
   }
   return ɵɵattributeInterpolate1;
 }
@@ -81,13 +79,11 @@ export function ɵɵattributeInterpolate1(
 export function ɵɵattributeInterpolate2(
     attrName: string, prefix: string, v0: any, i0: string, v1: any, suffix: string,
     sanitizer?: SanitizerFn, namespace?: string): TsickleIssue1009 {
-  const index = getSelectedIndex();
   const lView = getLView();
-
-  // TODO(FW-1340): Refactor to remove the use of other instructions here.
-  const interpolatedValue = ɵɵinterpolation2(prefix, v0, i0, v1, suffix);
+  const interpolatedValue = interpolation2(lView, prefix, v0, i0, v1, suffix);
   if (interpolatedValue !== NO_CHANGE) {
-    elementAttributeInternal(index, attrName, interpolatedValue, lView, sanitizer, namespace);
+    elementAttributeInternal(
+        getSelectedIndex(), attrName, interpolatedValue, lView, sanitizer, namespace);
   }
   return ɵɵattributeInterpolate2;
 }
@@ -124,13 +120,11 @@ export function ɵɵattributeInterpolate2(
 export function ɵɵattributeInterpolate3(
     attrName: string, prefix: string, v0: any, i0: string, v1: any, i1: string, v2: any,
     suffix: string, sanitizer?: SanitizerFn, namespace?: string): TsickleIssue1009 {
-  const index = getSelectedIndex();
   const lView = getLView();
-
-  // TODO(FW-1340): Refactor to remove the use of other instructions here.
-  const interpolatedValue = ɵɵinterpolation3(prefix, v0, i0, v1, i1, v2, suffix);
+  const interpolatedValue = interpolation3(lView, prefix, v0, i0, v1, i1, v2, suffix);
   if (interpolatedValue !== NO_CHANGE) {
-    elementAttributeInternal(index, attrName, interpolatedValue, lView, sanitizer, namespace);
+    elementAttributeInternal(
+        getSelectedIndex(), attrName, interpolatedValue, lView, sanitizer, namespace);
   }
   return ɵɵattributeInterpolate3;
 }
@@ -169,13 +163,11 @@ export function ɵɵattributeInterpolate3(
 export function ɵɵattributeInterpolate4(
     attrName: string, prefix: string, v0: any, i0: string, v1: any, i1: string, v2: any, i2: string,
     v3: any, suffix: string, sanitizer?: SanitizerFn, namespace?: string): TsickleIssue1009 {
-  const index = getSelectedIndex();
   const lView = getLView();
-
-  // TODO(FW-1340): Refactor to remove the use of other instructions here.
-  const interpolatedValue = ɵɵinterpolation4(prefix, v0, i0, v1, i1, v2, i2, v3, suffix);
+  const interpolatedValue = interpolation4(lView, prefix, v0, i0, v1, i1, v2, i2, v3, suffix);
   if (interpolatedValue !== NO_CHANGE) {
-    elementAttributeInternal(index, attrName, interpolatedValue, lView, sanitizer, namespace);
+    elementAttributeInternal(
+        getSelectedIndex(), attrName, interpolatedValue, lView, sanitizer, namespace);
   }
   return ɵɵattributeInterpolate4;
 }
@@ -217,13 +209,12 @@ export function ɵɵattributeInterpolate5(
     attrName: string, prefix: string, v0: any, i0: string, v1: any, i1: string, v2: any, i2: string,
     v3: any, i3: string, v4: any, suffix: string, sanitizer?: SanitizerFn,
     namespace?: string): TsickleIssue1009 {
-  const index = getSelectedIndex();
   const lView = getLView();
-
-  // TODO(FW-1340): Refactor to remove the use of other instructions here.
-  const interpolatedValue = ɵɵinterpolation5(prefix, v0, i0, v1, i1, v2, i2, v3, i3, v4, suffix);
+  const interpolatedValue =
+      interpolation5(lView, prefix, v0, i0, v1, i1, v2, i2, v3, i3, v4, suffix);
   if (interpolatedValue !== NO_CHANGE) {
-    elementAttributeInternal(index, attrName, interpolatedValue, lView, sanitizer, namespace);
+    elementAttributeInternal(
+        getSelectedIndex(), attrName, interpolatedValue, lView, sanitizer, namespace);
   }
   return ɵɵattributeInterpolate5;
 }
@@ -267,13 +258,12 @@ export function ɵɵattributeInterpolate6(
     attrName: string, prefix: string, v0: any, i0: string, v1: any, i1: string, v2: any, i2: string,
     v3: any, i3: string, v4: any, i4: string, v5: any, suffix: string, sanitizer?: SanitizerFn,
     namespace?: string): TsickleIssue1009 {
-  const index = getSelectedIndex();
   const lView = getLView();
-  // TODO(FW-1340): Refactor to remove the use of other instructions here.
   const interpolatedValue =
-      ɵɵinterpolation6(prefix, v0, i0, v1, i1, v2, i2, v3, i3, v4, i4, v5, suffix);
+      interpolation6(lView, prefix, v0, i0, v1, i1, v2, i2, v3, i3, v4, i4, v5, suffix);
   if (interpolatedValue !== NO_CHANGE) {
-    elementAttributeInternal(index, attrName, interpolatedValue, lView, sanitizer, namespace);
+    elementAttributeInternal(
+        getSelectedIndex(), attrName, interpolatedValue, lView, sanitizer, namespace);
   }
   return ɵɵattributeInterpolate6;
 }
@@ -321,9 +311,8 @@ export function ɵɵattributeInterpolate7(
     sanitizer?: SanitizerFn, namespace?: string): TsickleIssue1009 {
   const index = getSelectedIndex();
   const lView = getLView();
-  // TODO(FW-1340): Refactor to remove the use of other instructions here.
   const interpolatedValue =
-      ɵɵinterpolation7(prefix, v0, i0, v1, i1, v2, i2, v3, i3, v4, i4, v5, i5, v6, suffix);
+      interpolation7(lView, prefix, v0, i0, v1, i1, v2, i2, v3, i3, v4, i4, v5, i5, v6, suffix);
   if (interpolatedValue !== NO_CHANGE) {
     elementAttributeInternal(index, attrName, interpolatedValue, lView, sanitizer, namespace);
   }
@@ -373,13 +362,12 @@ export function ɵɵattributeInterpolate8(
     attrName: string, prefix: string, v0: any, i0: string, v1: any, i1: string, v2: any, i2: string,
     v3: any, i3: string, v4: any, i4: string, v5: any, i5: string, v6: any, i6: string, v7: any,
     suffix: string, sanitizer?: SanitizerFn, namespace?: string): TsickleIssue1009 {
-  const index = getSelectedIndex();
   const lView = getLView();
-  // TODO(FW-1340): Refactor to remove the use of other instructions here.
-  const interpolatedValue =
-      ɵɵinterpolation8(prefix, v0, i0, v1, i1, v2, i2, v3, i3, v4, i4, v5, i5, v6, i6, v7, suffix);
+  const interpolatedValue = interpolation8(
+      lView, prefix, v0, i0, v1, i1, v2, i2, v3, i3, v4, i4, v5, i5, v6, i6, v7, suffix);
   if (interpolatedValue !== NO_CHANGE) {
-    elementAttributeInternal(index, attrName, interpolatedValue, lView, sanitizer, namespace);
+    elementAttributeInternal(
+        getSelectedIndex(), attrName, interpolatedValue, lView, sanitizer, namespace);
   }
   return ɵɵattributeInterpolate8;
 }
@@ -413,12 +401,11 @@ export function ɵɵattributeInterpolate8(
 export function ɵɵattributeInterpolateV(
     attrName: string, values: any[], sanitizer?: SanitizerFn,
     namespace?: string): TsickleIssue1009 {
-  const index = getSelectedIndex();
   const lView = getLView();
-  // TODO(FW-1340): Refactor to remove the use of other instructions here.
-  const interpolated = ɵɵinterpolationV(values);
+  const interpolated = interpolationV(lView, values);
   if (interpolated !== NO_CHANGE) {
-    elementAttributeInternal(index, attrName, interpolated, lView, sanitizer, namespace);
+    elementAttributeInternal(
+        getSelectedIndex(), attrName, interpolated, lView, sanitizer, namespace);
   }
   return ɵɵattributeInterpolateV;
 }

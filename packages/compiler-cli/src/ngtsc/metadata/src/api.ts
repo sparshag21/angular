@@ -6,7 +6,7 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {DirectiveMeta as T2DirectiveMeta} from '@angular/compiler';
+import {DirectiveMeta as T2DirectiveMeta, SchemaMetadata} from '@angular/compiler';
 
 import {Reference} from '../../imports';
 import {ClassDeclaration} from '../../reflection';
@@ -19,6 +19,7 @@ export interface NgModuleMeta {
   declarations: Reference<ClassDeclaration>[];
   imports: Reference<ClassDeclaration>[];
   exports: Reference<ClassDeclaration>[];
+  schemas: SchemaMetadata[];
 }
 
 /**
@@ -75,6 +76,7 @@ export interface PipeMeta {
  * or a registry.
  */
 export interface MetadataReader {
+  isAbstractDirective(node: Reference<ClassDeclaration>): boolean;
   getDirectiveMetadata(node: Reference<ClassDeclaration>): DirectiveMeta|null;
   getNgModuleMetadata(node: Reference<ClassDeclaration>): NgModuleMeta|null;
   getPipeMetadata(node: Reference<ClassDeclaration>): PipeMeta|null;
@@ -84,6 +86,7 @@ export interface MetadataReader {
  * Registers new metadata for directives, pipes, and modules.
  */
 export interface MetadataRegistry {
+  registerAbstractDirective(clazz: ClassDeclaration): void;
   registerDirectiveMetadata(meta: DirectiveMeta): void;
   registerNgModuleMetadata(meta: NgModuleMeta): void;
   registerPipeMetadata(meta: PipeMeta): void;

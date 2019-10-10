@@ -6,9 +6,9 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
+import {ɵgetDOM as getDOM} from '@angular/common';
 import {SecurityContext} from '@angular/core';
 import {ArgumentType, BindingFlags, NodeCheckFn, NodeFlags, Services, ViewData, ViewFlags, ViewState, asElementData, directiveDef, elementDef, rootRenderNodes} from '@angular/core/src/view/index';
-import {getDOM} from '@angular/platform-browser/src/dom/dom_adapter';
 
 import {callMostRecentEventListenerHandler, compViewDef, createAndGetRootNodes, createRootView, isBrowser, recordNodeToRemove} from './helper';
 
@@ -42,8 +42,8 @@ const addEventListener = '__zone_symbol__addEventListener' as 'addEventListener'
       expect(compView.context).toBe(instance);
       expect(compView.component).toBe(instance);
 
-      const compRootEl = getDOM().childNodes(rootNodes[0])[0];
-      expect(getDOM().nodeName(compRootEl).toLowerCase()).toBe('span');
+      const compRootEl = rootNodes[0].childNodes[0];
+      expect(compRootEl.nodeName.toLowerCase()).toBe('span');
     });
 
     if (isBrowser()) {

@@ -86,6 +86,22 @@ export class StaticReflector implements CompileReflector {
     return this.symbolResolver.getResourcePath(staticSymbol);
   }
 
+  /**
+   * Invalidate the specified `symbols` on program change.
+   * @param symbols
+   */
+  invalidateSymbols(symbols: StaticSymbol[]) {
+    for (const symbol of symbols) {
+      this.annotationCache.delete(symbol);
+      this.shallowAnnotationCache.delete(symbol);
+      this.propertyCache.delete(symbol);
+      this.parameterCache.delete(symbol);
+      this.methodCache.delete(symbol);
+      this.staticCache.delete(symbol);
+      this.conversionMap.delete(symbol);
+    }
+  }
+
   resolveExternalReference(ref: o.ExternalReference, containingFile?: string): StaticSymbol {
     let key: string|undefined = undefined;
     if (!containingFile) {
@@ -132,7 +148,7 @@ export class StaticReflector implements CompileReflector {
 
   public tryAnnotations(type: StaticSymbol): any[] {
     const originalRecorder = this.errorRecorder;
-    this.errorRecorder = (error: any, fileName: string) => {};
+    this.errorRecorder = (error: any, fileName?: string) => {};
     try {
       return this.annotations(type);
     } finally {
@@ -429,7 +445,7 @@ export class StaticReflector implements CompileReflector {
    */
   private trySimplify(context: StaticSymbol, value: any): any {
     const originalRecorder = this.errorRecorder;
-    this.errorRecorder = (error: any, fileName: string) => {};
+    this.errorRecorder = (error: any, fileName?: string) => {};
     const result = this.simplify(context, value);
     this.errorRecorder = originalRecorder;
     return result;

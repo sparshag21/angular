@@ -64,7 +64,6 @@ module.exports = function(config) {
         included: false,
         watched: false,
       },
-      {pattern: 'packages/common/i18n/**', included: false, watched: false, served: true},
     ],
 
     exclude: [
@@ -83,6 +82,8 @@ module.exports = function(config) {
       'dist/all/@angular/elements/schematics/**',
       'dist/all/@angular/examples/**/e2e_test/*',
       'dist/all/@angular/language-service/**',
+      'dist/all/@angular/localize/**/test/**',
+      'dist/all/@angular/localize/schematics/**',
       'dist/all/@angular/router/**/test/**',
       'dist/all/@angular/platform-browser/testing/e2e_util.js',
       'dist/all/angular1_router.js',

@@ -12,7 +12,7 @@ A simple example might be a button that sends users to your company website, tha
 
 Use the Angular CLI to generate a new library skeleton with the following command:
 
-<code-example format="." language="bash">
+<code-example language="bash">
  ng generate library my-lib
 </code-example>
 
@@ -35,7 +35,7 @@ The workspace configuration file, `angular.json`, is updated with a project of t
 
 You can build, test, and lint the project with CLI commands:
 
-<code-example format="." language="bash">
+<code-example language="bash">
  ng build my-lib
  ng test my-lib
  ng lint my-lib
@@ -106,7 +106,7 @@ To learn more, see [Schematics Overview](guide/schematics) and [Schematics for
 Use the Angular CLI and the npm package manager to build and publish your library as an npm package.
 Libraries are built in [AoT mode](guide/aot-compiler) by default, so you do not need to specify the `-prod` flag when building for publication.
 
-<code-example format="." language="bash">
+<code-example language="bash">
 ng build my-lib
 cd dist/my-lib
 npm publish
@@ -158,7 +158,7 @@ You don't have to publish your library to the npm package manager in order to us
 To use your own library in an app:
 
 * Build the library. You cannot use a library before it is built.
- <code-example format="." language="bash">
+ <code-example language="bash">
  ng build my-lib
  </code-example>
 
@@ -188,8 +188,23 @@ You can rebuild your library whenever you make changes to it, but this extra ste
 *Incremental builds* functionality improves the library-development experience.
 Every time a file is changed a partial build is performed that emits the amended files.
 
-Incremental builds can be run as a backround process in your dev environment. To take advantage of this feature add the `--watch` flag to the build command:
+Incremental builds can be run as a background process in your dev environment. To take advantage of this feature add the `--watch` flag to the build command:
 
-<code-example format="." language="bash">
+<code-example language="bash">
 ng build my-lib --watch
 </code-example>
+
+<div class="alert is-important">
+
+The CLI `build` command uses a different builder and invokes a different build tool for libraries than it does for applications.
+
+* The  build system for apps, `@angular-devkit/build-angular`, is based on `webpack`, and is included in all new Angular CLI projects.
+* The build system for libraries is based on `ng-packagr`. It is only added to your dependencies when you add a library using `ng generate library my-lib`.
+
+The two build systems support different things, and even where they support the same things, they do those things differently.
+This means that the TypeScript source can result in different JavaScript code in a built library than it would in a built application.
+
+For this reason, an app that depends on a library should only use TypeScript path mappings that point to the *built library*.
+TypeScript path mappings should *not* point to the library source `.ts` files.
+
+</div>

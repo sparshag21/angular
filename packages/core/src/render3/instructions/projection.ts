@@ -5,14 +5,17 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
+import {newArray} from '../../util/array_utils';
 import {TAttributes, TElementNode, TNode, TNodeType} from '../interfaces/node';
 import {ProjectionSlots} from '../interfaces/projection';
 import {TVIEW, T_HOST} from '../interfaces/view';
-import {appendProjectedNodes} from '../node_manipulation';
+import {applyProjection} from '../node_manipulation';
 import {getProjectAsAttrValue, isNodeMatchingSelectorList, isSelectorInSelectorList} from '../node_selector_matcher';
 import {getLView, setIsNotParent} from '../state';
 import {findComponentView} from '../util/view_traversal_utils';
+
 import {getOrCreateTNode} from './shared';
+
 
 
 /**
@@ -79,7 +82,7 @@ export function ɵɵprojectionDef(projectionSlots?: ProjectionSlots): void {
     // projection slot with the wildcard selector.
     const numProjectionSlots = projectionSlots ? projectionSlots.length : 1;
     const projectionHeads: (TNode | null)[] = componentNode.projection =
-        new Array(numProjectionSlots).fill(null);
+        newArray(numProjectionSlots, null !as TNode);
     const tails: (TNode | null)[] = projectionHeads.slice();
 
     let componentChild: TNode|null = componentNode.child;
@@ -134,6 +137,6 @@ export function ɵɵprojection(
   // We might need to delay the projection of nodes if they are in the middle of an i18n block
   if (!delayProjection) {
     // re-distribution of projectable nodes is stored on a component's view level
-    appendProjectedNodes(lView, tProjectionNode, selectorIndex, findComponentView(lView));
+    applyProjection(lView, tProjectionNode);
   }
 }

@@ -6,30 +6,27 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {assertDataInRange, assertDefined, assertGreaterThan, assertLessThan} from '../../util/assert';
+import {assertDataInRange, assertDefined, assertDomNode, assertGreaterThan, assertLessThan} from '../../util/assert';
+import {assertTNodeForLView} from '../assert';
 import {LContainer, TYPE} from '../interfaces/container';
 import {LContext, MONKEY_PATCH_KEY_NAME} from '../interfaces/context';
-import {ComponentDef, DirectiveDef} from '../interfaces/definition';
-import {TNode, TNodeFlags} from '../interfaces/node';
+import {TNode} from '../interfaces/node';
 import {RNode} from '../interfaces/renderer';
-import {StylingContext} from '../interfaces/styling';
+import {isLContainer, isLView} from '../interfaces/type_checks';
 import {FLAGS, HEADER_OFFSET, HOST, LView, LViewFlags, PARENT, PREORDER_HOOK_FLAGS, TData, TVIEW} from '../interfaces/view';
 
 
 
 /**
- * For efficiency reasons we often put several different data types (`RNode`, `LView`, `LContainer`,
- * `StylingContext`) in same location in `LView`. This is because we don't want to pre-allocate
- * space for it because the storage is sparse. This file contains utilities for dealing with such
- * data types.
+ * For efficiency reasons we often put several different data types (`RNode`, `LView`, `LContainer`)
+ * in same location in `LView`. This is because we don't want to pre-allocate space for it
+ * because the storage is sparse. This file contains utilities for dealing with such data types.
  *
  * How do we know what is stored at a given location in `LView`.
  * - `Array.isArray(value) === false` => `RNode` (The normal storage value)
  * - `Array.isArray(value) === true` => then the `value[0]` represents the wrapped value.
  *   - `typeof value[TYPE] === 'object'` => `LView`
  *      - This happens when we have a component at a given location
- *   - `typeof value[TYPE] === 'number'` => `StylingContext`
- *      - This happens when we have style/class binding at a given location.
  *   - `typeof value[TYPE] === true` => `LContainer`
  *      - This happens when we have `LContainer` binding at a given location.
  *
@@ -39,9 +36,9 @@ import {FLAGS, HEADER_OFFSET, HOST, LView, LViewFlags, PARENT, PREORDER_HOOK_FLA
 
 /**
  * Returns `RNode`.
- * @param value wrapped value of `RNode`, `LView`, `LContainer`, `StylingContext`
+ * @param value wrapped value of `RNode`, `LView`, `LContainer`
  */
-export function unwrapRNode(value: RNode | LView | LContainer | StylingContext): RNode {
+export function unwrapRNode(value: RNode | LView | LContainer): RNode {
   while (Array.isArray(value)) {
     value = value[HOST] as any;
   }
@@ -50,9 +47,9 @@ export function unwrapRNode(value: RNode | LView | LContainer | StylingContext):
 
 /**
  * Returns `LView` or `null` if not found.
- * @param value wrapped value of `RNode`, `LView`, `LContainer`, `StylingContext`
+ * @param value wrapped value of `RNode`, `LView`, `LContainer`
  */
-export function unwrapLView(value: RNode | LView | LContainer | StylingContext): LView|null {
+export function unwrapLView(value: RNode | LView | LContainer): LView|null {
   while (Array.isArray(value)) {
     // This check is same as `isLView()` but we don't call at as we don't want to call
     // `Array.isArray()` twice and give JITer more work for inlining.
@@ -64,10 +61,9 @@ export function unwrapLView(value: RNode | LView | LContainer | StylingContext):
 
 /**
  * Returns `LContainer` or `null` if not found.
- * @param value wrapped value of `RNode`, `LView`, `LContainer`, `StylingContext`
+ * @param value wrapped value of `RNode`, `LView`, `LContainer`
  */
-export function unwrapLContainer(value: RNode | LView | LContainer | StylingContext): LContainer|
-    null {
+export function unwrapLContainer(value: RNode | LView | LContainer): LContainer|null {
   while (Array.isArray(value)) {
     // This check is same as `isLContainer()` but we don't call at as we don't want to call
     // `Array.isArray()` twice and give JITer more work for inlining.
@@ -78,48 +74,6 @@ export function unwrapLContainer(value: RNode | LView | LContainer | StylingCont
 }
 
 /**
- * Returns `StylingContext` or `null` if not found.
- * @param value wrapped value of `RNode`, `LView`, `LContainer`, `StylingContext`
- */
-export function unwrapStylingContext(value: RNode | LView | LContainer | StylingContext):
-    StylingContext|null {
-  while (Array.isArray(value)) {
-    // This check is same as `isStylingContext()` but we don't call at as we don't want to call
-    // `Array.isArray()` twice and give JITer more work for inlining.
-    if (typeof value[TYPE] === 'number') return value as StylingContext;
-    value = value[HOST] as any;
-  }
-  return null;
-}
-
-/**
- * True if `value` is `LView`.
- * @param value wrapped value of `RNode`, `LView`, `LContainer`, `StylingContext`
- */
-export function isLView(value: RNode | LView | LContainer | StylingContext | {} | null):
-    value is LView {
-  return Array.isArray(value) && typeof value[TYPE] === 'object';
-}
-
-/**
- * True if `value` is `LContainer`.
- * @param value wrapped value of `RNode`, `LView`, `LContainer`, `StylingContext`
- */
-export function isLContainer(value: RNode | LView | LContainer | StylingContext | {} | null):
-    value is LContainer {
-  return Array.isArray(value) && value[TYPE] === true;
-}
-
-/**
- * True if `value` is `StylingContext`.
- * @param value wrapped value of `RNode`, `LView`, `LContainer`, `StylingContext`
- */
-export function isStylingContext(value: RNode | LView | LContainer | StylingContext | {} | null):
-    value is StylingContext {
-  return Array.isArray(value) && typeof value[TYPE] === 'number';
-}
-
-/**
  * Retrieves an element value from the provided `viewData`, by unwrapping
  * from any containers, component views, or style contexts.
  */
@@ -127,16 +81,41 @@ export function getNativeByIndex(index: number, lView: LView): RNode {
   return unwrapRNode(lView[index + HEADER_OFFSET]);
 }
 
-export function getNativeByTNode(tNode: TNode, hostView: LView): RNode {
-  return unwrapRNode(hostView[tNode.index]);
+/**
+ * Retrieve an `RNode` for a given `TNode` and `LView`.
+ *
+ * This function guarantees in dev mode to retrieve a non-null `RNode`.
+ *
+ * @param tNode
+ * @param lView
+ */
+export function getNativeByTNode(tNode: TNode, lView: LView): RNode {
+  ngDevMode && assertTNodeForLView(tNode, lView);
+  ngDevMode && assertDataInRange(lView, tNode.index);
+  const node: RNode = unwrapRNode(lView[tNode.index]);
+  ngDevMode && assertDomNode(node);
+  return node;
 }
 
 /**
- * A helper function that returns `true` if a given `TNode` has any matching directives.
+ * Retrieve an `RNode` or `null` for a given `TNode` and `LView`.
+ *
+ * Some `TNode`s don't have associated `RNode`s. For example `Projection`
+ *
+ * @param tNode
+ * @param lView
  */
-export function hasDirectives(tNode: TNode): boolean {
-  return tNode.directiveEnd > tNode.directiveStart;
+export function getNativeByTNodeOrNull(tNode: TNode, lView: LView): RNode|null {
+  const index = tNode.index;
+  if (index !== -1) {
+    ngDevMode && assertTNodeForLView(tNode, lView);
+    const node: RNode|null = unwrapRNode(lView[index]);
+    ngDevMode && node !== null && assertDomNode(node);
+    return node;
+  }
+  return null;
 }
+
 
 export function getTNode(index: number, view: LView): TNode {
   ngDevMode && assertGreaterThan(index, -1, 'wrong index for TNode');
@@ -145,33 +124,19 @@ export function getTNode(index: number, view: LView): TNode {
 }
 
 /** Retrieves a value from any `LView` or `TData`. */
-export function loadInternal<T>(view: LView | TData, index: number): T {
+export function load<T>(view: LView | TData, index: number): T {
   ngDevMode && assertDataInRange(view, index + HEADER_OFFSET);
   return view[index + HEADER_OFFSET];
 }
 
 export function getComponentViewByIndex(nodeIndex: number, hostView: LView): LView {
   // Could be an LView or an LContainer. If LContainer, unwrap to find LView.
+  ngDevMode && assertDataInRange(hostView, nodeIndex);
   const slotValue = hostView[nodeIndex];
   const lView = isLView(slotValue) ? slotValue : slotValue[HOST];
   return lView;
 }
 
-export function isContentQueryHost(tNode: TNode): boolean {
-  return (tNode.flags & TNodeFlags.hasContentQuery) !== 0;
-}
-
-export function isComponent(tNode: TNode): boolean {
-  return (tNode.flags & TNodeFlags.isComponent) === TNodeFlags.isComponent;
-}
-
-export function isComponentDef<T>(def: DirectiveDef<T>): def is ComponentDef<T> {
-  return (def as ComponentDef<T>).template !== null;
-}
-
-export function isRootView(target: LView): boolean {
-  return (target[FLAGS] & LViewFlags.IsRoot) !== 0;
-}
 
 /**
  * Returns the monkey-patch value data present on the target (which could be
@@ -179,7 +144,7 @@ export function isRootView(target: LView): boolean {
  */
 export function readPatchedData(target: any): LView|LContext|null {
   ngDevMode && assertDefined(target, 'Target expected');
-  return target[MONKEY_PATCH_KEY_NAME];
+  return target[MONKEY_PATCH_KEY_NAME] || null;
 }
 
 export function readPatchedLView(target: any): LView|null {
@@ -188,6 +153,11 @@ export function readPatchedLView(target: any): LView|null {
     return Array.isArray(value) ? value : (value as LContext).lView;
   }
   return null;
+}
+
+/** Checks whether a given view is in creation mode */
+export function isCreationMode(view: LView): boolean {
+  return (view[FLAGS] & LViewFlags.CreationMode) === LViewFlags.CreationMode;
 }
 
 /**

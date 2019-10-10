@@ -34,5 +34,19 @@ export {EventEmitter} from './event_emitter';
 export {ErrorHandler} from './error_handler';
 export * from './core_private_export';
 export * from './core_render3_private_export';
-export {Sanitizer, SecurityContext} from './sanitization/security';
+export {SecurityContext} from './sanitization/security';
+export {Sanitizer} from './sanitization/sanitizer';
 export * from './codegen_private_exports';
+
+import {global} from './util/global';
+if (ngDevMode) {
+  // This helper is to give a reasonable error message to people upgrading to v9 that have not yet
+  // installed `@angular/localize` in their app.
+  // tslint:disable-next-line: no-toplevel-property-access
+  global.$localize = global.$localize || function() {
+    throw new Error(
+        'It looks like your application or one of its dependencies is using i18n.\n' +
+        'Angular 9 introduced a global `$localize()` function that needs to be loaded.\n' +
+        'Please add `import \'@angular/localize/init\';` to your polyfills.ts file.');
+  };
+}

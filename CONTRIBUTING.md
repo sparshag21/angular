@@ -201,7 +201,7 @@ Must be one of the following:
 * **test**: Adding missing tests or correcting existing tests
 
 ### Scope
-The scope should be the name of the npm package affected (as perceived by the person reading the changelog generated from commit messages.
+The scope should be the name of the npm package affected (as perceived by the person reading the changelog generated from commit messages).
 
 The following is the list of supported scopes:
 
@@ -233,6 +233,7 @@ There are currently a few exceptions to the "use package name" rule:
 * **docs-infra**: used for docs-app (angular.io) related changes within the /aio directory of the
   repo
 * **ivy**: used for changes to the [Ivy renderer](https://github.com/angular/angular/issues/21706).
+* **ngcc**: used for changes to the [Angular Compatibility Compiler](./packages/compiler-cli/ngcc/README.md)
 * none/empty string: useful for `style`, `test` and `refactor` changes that are done across all
   packages (e.g. `style: add missing semicolons`) and for docs changes that are not related to a
   specific package (e.g. `docs: fix typo in tutorial`).

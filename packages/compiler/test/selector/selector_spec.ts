@@ -6,8 +6,8 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
+import {ɵgetDOM as getDOM} from '@angular/common';
 import {CssSelector, SelectorMatcher} from '@angular/compiler/src/selector';
-import {getDOM} from '@angular/platform-browser/src/dom/dom_adapter';
 import {el} from '@angular/platform-browser/testing/src/browser_util';
 
 {
@@ -128,7 +128,7 @@ import {el} from '@angular/platform-browser/testing/src/browser_util';
 
       const elementSelector = new CssSelector();
       const element = el('<div attr></div>');
-      const empty = getDOM().getAttribute(element, 'attr') !;
+      const empty = element.getAttribute('attr') !;
       elementSelector.addAttribute('some-decor', empty);
       matcher.match(elementSelector, selectableCollector);
       expect(matched).toEqual([s1[0], 1]);

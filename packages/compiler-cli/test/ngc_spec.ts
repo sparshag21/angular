@@ -59,6 +59,9 @@ describe('ngc transformer command-line', () => {
         "moduleResolution": "node",
         "lib": ["es6", "dom"],
         "typeRoots": ["node_modules/@types"]
+      },
+      "angularCompilerOptions": {
+        "enableIvy": false
       }
     }`);
   });
@@ -2282,5 +2285,29 @@ describe('ngc transformer command-line', () => {
     `);
     let exitCode = main(['-p', path.join(basePath, 'tsconfig.json')], errorSpy);
     expect(exitCode).toEqual(0);
+  });
+
+  describe('base directives', () => {
+    it('should allow directives with no selector that are not in NgModules', () => {
+      // first only generate .d.ts / .js / .metadata.json files
+      writeConfig(`{
+          "extends": "./tsconfig-base.json",
+          "files": ["main.ts"]
+        }`);
+      write('main.ts', `
+          import {Directive} from '@angular/core';
+
+          @Directive({})
+          export class BaseDir {}
+
+          @Directive({})
+          export abstract class AbstractBaseDir {}
+
+          @Directive()
+          export abstract class EmptyDir {}
+      `);
+      let exitCode = main(['-p', path.join(basePath, 'tsconfig.json')], errorSpy);
+      expect(exitCode).toEqual(0);
+    });
   });
 });

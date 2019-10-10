@@ -10,9 +10,10 @@ import '../util/ng_dev_mode';
 
 import {OnDestroy} from '../interface/lifecycle_hooks';
 import {Type} from '../interface/type';
+import {getFactoryDef} from '../render3/definition';
 import {throwCyclicDependencyError, throwInvalidProviderError, throwMixedMultiProviderError} from '../render3/errors';
+import {deepForEach, newArray} from '../util/array_utils';
 import {stringify} from '../util/stringify';
-
 import {resolveForwardRef} from './forward_ref';
 import {InjectionToken} from './injection_token';
 import {Injector} from './injector';
@@ -20,7 +21,7 @@ import {INJECTOR, NG_TEMP_TOKEN_PATH, NullInjector, THROW_IF_NOT_FOUND, USE_VALU
 import {InjectorType, InjectorTypeWithProviders, getInheritedInjectableDef, getInjectableDef, getInjectorDef, ɵɵInjectableDef} from './interface/defs';
 import {InjectFlags} from './interface/injector';
 import {ClassProvider, ConstructorProvider, ExistingProvider, FactoryProvider, StaticClassProvider, StaticProvider, TypeProvider, ValueProvider} from './interface/provider';
-import {APP_ROOT} from './scope';
+import {INJECTOR_SCOPE} from './scope';
 
 
 
@@ -83,8 +84,10 @@ export function createInjector(
 export class R3Injector {
   /**
    * Map of tokens to records which contain the instances of those tokens.
+   * - `null` value implies that we don't have the record. Used by tree-shakable injectors
+   * to prevent further searches.
    */
-  private records = new Map<Type<any>|InjectionToken<any>, Record<any>>();
+  private records = new Map<Type<any>|InjectionToken<any>, Record<any>|null>();
 
   /**
    * The transitive set of `InjectorType`s which define this injector.
@@ -100,7 +103,7 @@ export class R3Injector {
    * Flag indicating this injector provides the APP_ROOT_SCOPE token, and thus counts as the
    * root scope.
    */
-  private readonly isRootInjector: boolean;
+  private readonly scope: 'root'|'platform'|null;
 
   readonly source: string|null;
 
@@ -113,22 +116,24 @@ export class R3Injector {
   constructor(
       def: InjectorType<any>, additionalProviders: StaticProvider[]|null, readonly parent: Injector,
       source: string|null = null) {
-    // Start off by creating Records for every provider declared in every InjectorType
-    // included transitively in `def`.
     const dedupStack: InjectorType<any>[] = [];
-    deepForEach([def], injectorDef => this.processInjectorType(injectorDef, [], dedupStack));
 
+    // Start off by creating Records for every provider declared in every InjectorType
+    // included transitively in additional providers then do the same for `def`. This order is
+    // important because `def` may include providers that override ones in additionalProviders.
     additionalProviders && deepForEach(
                                additionalProviders, provider => this.processProvider(
                                                         provider, def, additionalProviders));
 
+    deepForEach([def], injectorDef => this.processInjectorType(injectorDef, [], dedupStack));
 
     // Make sure the INJECTOR token provides this injector.
     this.records.set(INJECTOR, makeRecord(undefined, this));
 
     // Detect whether this injector has the APP_ROOT_SCOPE token and thus should provide
     // any injectable scoped to APP_ROOT_SCOPE.
-    this.isRootInjector = this.records.has(APP_ROOT);
+    const record = this.records.get(INJECTOR_SCOPE);
+    this.scope = record != null ? record.value : null;
 
     // Eagerly instantiate the InjectorType classes themselves.
     this.injectorDefTypes.forEach(defType => this.get(defType));
@@ -169,7 +174,7 @@ export class R3Injector {
       // Check for the SkipSelf flag.
       if (!(flags & InjectFlags.SkipSelf)) {
         // SkipSelf isn't set, check if the record belongs to this injector.
-        let record: Record<T>|undefined = this.records.get(token);
+        let record: Record<T>|undefined|null = this.records.get(token);
         if (record === undefined) {
           // No record, but maybe the token is scoped to this injector. Look for an ngInjectableDef
           // with a scope matching this injector.
@@ -178,11 +183,13 @@ export class R3Injector {
             // Found an ngInjectableDef and it's scoped to this injector. Pretend as if it was here
             // all along.
             record = makeRecord(injectableDefOrInjectorDefFactory(token), NOT_YET);
-            this.records.set(token, record);
+          } else {
+            record = null;
           }
+          this.records.set(token, record);
         }
         // If a record was found, get the instance for it and return it.
-        if (record !== undefined) {
+        if (record != null /* NOT null || undefined */) {
           return this.hydrate(token, record);
         }
       }
@@ -190,7 +197,12 @@ export class R3Injector {
       // Select the next injector based on the Self flag - if self is set, the next injector is
       // the NullInjector, otherwise it's the parent.
       const nextInjector = !(flags & InjectFlags.Self) ? this.parent : getNullInjector();
-      return nextInjector.get(token, flags & InjectFlags.Optional ? null : notFoundValue);
+      // Set the notFoundValue based on the Optional flag - if optional is set and notFoundValue
+      // is undefined, the value is null, otherwise it's the notFoundValue.
+      notFoundValue = (flags & InjectFlags.Optional) && notFoundValue === THROW_IF_NOT_FOUND ?
+          null :
+          notFoundValue;
+      return nextInjector.get(token, notFoundValue);
     } catch (e) {
       if (e.name === 'NullInjectorError') {
         const path: any[] = e[NG_TEMP_TOKEN_PATH] = e[NG_TEMP_TOKEN_PATH] || [];
@@ -388,7 +400,7 @@ export class R3Injector {
     if (!def.providedIn) {
       return false;
     } else if (typeof def.providedIn === 'string') {
-      return def.providedIn === 'any' || (def.providedIn === 'root' && this.isRootInjector);
+      return def.providedIn === 'any' || (def.providedIn === this.scope);
     } else {
       return this.injectorDefTypes.has(def.providedIn);
     }
@@ -398,8 +410,10 @@ export class R3Injector {
 function injectableDefOrInjectorDefFactory(token: Type<any>| InjectionToken<any>): () => any {
   // Most tokens will have an ngInjectableDef directly on them, which specifies a factory directly.
   const injectableDef = getInjectableDef(token);
-  if (injectableDef !== null) {
-    return injectableDef.factory;
+  const factory = injectableDef !== null ? injectableDef.factory : getFactoryDef(token);
+
+  if (factory !== null) {
+    return factory;
   }
 
   // If the token is an NgModule, it's also injectable but the factory is on its ngInjectorDef.
@@ -427,7 +441,7 @@ function getUndecoratedInjectableFactory(token: Function) {
   // If the token has parameters then it has dependencies that we cannot resolve implicitly.
   const paramLength = token.length;
   if (paramLength > 0) {
-    const args: string[] = new Array(paramLength).fill('?');
+    const args: string[] = newArray(paramLength, '?');
     throw new Error(`Can't resolve all parameters for ${stringify(token)}: (${args.join(', ')}).`);
   }
 
@@ -495,10 +509,6 @@ function makeRecord<T>(
     value: value,
     multi: multi ? [] : undefined,
   };
-}
-
-function deepForEach<T>(input: (T | any[])[], fn: (value: T) => void): void {
-  input.forEach(value => Array.isArray(value) ? deepForEach(value, fn) : fn(value));
 }
 
 function isValueProvider(value: SingleProvider): value is ValueProvider {

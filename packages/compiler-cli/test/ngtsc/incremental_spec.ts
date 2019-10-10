@@ -23,6 +23,23 @@ runInEachFileSystem(() => {
       env.tsconfig();
     });
 
+    it('should not crash if CLI does not provide getModifiedResourceFiles()', () => {
+      env.write('component1.ts', `
+      import {Component} from '@angular/core';
+
+      @Component({selector: 'cmp', templateUrl: './component1.template.html'})
+      export class Cmp1 {}
+    `);
+      env.write('component1.template.html', 'cmp1');
+      env.driveMain();
+
+      // Simulate a change to `component1.html`
+      env.flushWrittenFileTracking();
+      env.invalidateCachedFile('component1.html');
+      env.simulateLegacyCLICompilerHost();
+      env.driveMain();
+    });
+
     it('should skip unchanged services', () => {
       env.write('service.ts', `
       import {Injectable} from '@angular/core';
@@ -178,6 +195,25 @@ runInEachFileSystem(() => {
       expect(written).toContain('/foo_module.js');
     });
 
+    it('should rebuild only a Component (but with the correct CompilationScope) if its template has changed',
+       () => {
+         setupFooBarProgram(env);
+
+         // Make a change to the template of BarComponent.
+         env.write('bar_component.html', '<div bar>changed</div>');
+
+         env.driveMain();
+         const written = env.getFilesWrittenSinceLastFlush();
+         expect(written).not.toContain('/bar_directive.js');
+         expect(written).toContain('/bar_component.js');
+         expect(written).not.toContain('/bar_module.js');
+         expect(written).not.toContain('/foo_component.js');
+         expect(written).not.toContain('/foo_pipe.js');
+         expect(written).not.toContain('/foo_module.js');
+         // Ensure that the used directives are included in the component's generated template.
+         expect(env.getContents('/built/bar_component.js')).toMatch(/directives:\s*\[.+\.BarDir\]/);
+       });
+
     it('should rebuild everything if a typings file changes', () => {
       setupFooBarProgram(env);
 
@@ -201,6 +237,37 @@ runInEachFileSystem(() => {
       env.driveMain();
       // If program reuse were configured incorrectly (as was responsible for
       // https://github.com/angular/angular/issues/30079), this would have crashed.
+    });
+
+    // https://github.com/angular/angular/pull/26036
+    it('should handle redirected source files', () => {
+      env.tsconfig({fullTemplateTypeCheck: true});
+
+      // This file structure has an identical version of "a" under the root node_modules and inside
+      // of "b". Because their package.json file indicates it is the exact same version of "a",
+      // TypeScript will transform the source file of "node_modules/b/node_modules/a/index.d.ts"
+      // into a redirect to "node_modules/a/index.d.ts". During incremental compilations, we must
+      // assure not to reintroduce "node_modules/b/node_modules/a/index.d.ts" as its redirected
+      // source file, but instead use its original file.
+      env.write('node_modules/a/index.js', `export class ServiceA {}`);
+      env.write('node_modules/a/index.d.ts', `export declare class ServiceA {}`);
+      env.write('node_modules/a/package.json', `{"name": "a", "version": "1.0"}`);
+      env.write('node_modules/b/node_modules/a/index.js', `export class ServiceA {}`);
+      env.write('node_modules/b/node_modules/a/index.d.ts', `export declare class ServiceA {}`);
+      env.write('node_modules/b/node_modules/a/package.json', `{"name": "a", "version": "1.0"}`);
+      env.write('node_modules/b/index.js', `export {ServiceA as ServiceB} from 'a';`);
+      env.write('node_modules/b/index.d.ts', `export {ServiceA as ServiceB} from 'a';`);
+      env.write('test.ts', `
+        import {ServiceA} from 'a';
+        import {ServiceB} from 'b';
+      `);
+      env.driveMain();
+      env.flushWrittenFileTracking();
+
+      // Pretend a change was made to test.ts. If redirect sources were introduced into the new
+      // program, this would fail due to an assertion failure in TS.
+      env.invalidateCachedFile('test.ts');
+      env.driveMain();
     });
   });
 
@@ -232,9 +299,10 @@ runInEachFileSystem(() => {
     env.write('bar_component.ts', `
     import {Component} from '@angular/core';
 
-    @Component({selector: 'bar', template: 'bar'})
+    @Component({selector: 'bar', templateUrl: './bar_component.html'})
     export class BarCmp {}
   `);
+    env.write('bar_component.html', '<div bar></div>');
     env.write('bar_directive.ts', `
     import {Directive} from '@angular/core';
 
